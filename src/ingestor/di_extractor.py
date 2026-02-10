@@ -89,21 +89,39 @@ class ExtractedTable:
         self.summary: Optional[str] = None  # Optionally set by GPT-4o
 
 
+class PageHyperlink:
+    """Represents a hyperlink found in a PDF page."""
+
+    def __init__(
+        self,
+        page_num: int,
+        bbox: tuple[float, float, float, float],
+        url: str,
+        link_text: str = ""
+    ):
+        self.page_num = page_num
+        self.bbox = bbox
+        self.url = url
+        self.link_text = link_text
+
+
 class ExtractedPage:
     """Represents an extracted page with text, tables, and figures."""
-    
+
     def __init__(
         self,
         page_num: int,
         text: str,
         tables: list[ExtractedTable],
         images: list[ExtractedImage],
+        hyperlinks: list[PageHyperlink] = None,
         offset: int = 0
     ):
         self.page_num = page_num
         self.text = text
         self.tables = tables
         self.images = images
+        self.hyperlinks = hyperlinks or []
         self.offset = offset
 
 
@@ -231,10 +249,15 @@ class DocumentIntelligenceExtractor:
         """Parse DI analyze result into ExtractedPage objects."""
         pages = []
 
-        # Open PDF with PyMuPDF if we need to crop figures
+        # Open PDF with PyMuPDF if we need to crop figures or extract hyperlinks
         doc_for_pymupdf = None
         if pdf_bytes:
             doc_for_pymupdf = pymupdf.open(stream=io.BytesIO(pdf_bytes))
+
+        # Extract hyperlinks from all pages using PyMuPDF
+        all_hyperlinks = []
+        if doc_for_pymupdf:
+            all_hyperlinks = self._extract_hyperlinks(doc_for_pymupdf)
 
         # Extract tables
         all_tables = []
@@ -279,35 +302,43 @@ class DocumentIntelligenceExtractor:
         offset = 0
         for page in result.pages:
             page_num = page.page_number - 1  # Convert to 0-indexed
-            
+
             # Get tables on this page
             tables_on_page = [
                 t for t in all_tables
                 if page_num in t.page_nums
             ]
-            
+
             # Get figures on this page
             figures_on_page = [
                 f for f in all_figures
                 if f.page_num == page_num
             ]
-            
-            # Build page text with tables and figures inserted
+
+            # Get hyperlinks on this page
+            hyperlinks_on_page = [
+                h for h in all_hyperlinks
+                if h.page_num == page_num
+            ]
+
+            # Build page text with tables, figures, and hyperlinks inserted
             page_text = self._build_page_text(
                 result,
                 page,
                 tables_on_page,
-                figures_on_page
+                figures_on_page,
+                hyperlinks_on_page
             )
-            
+
             extracted_page = ExtractedPage(
                 page_num=page_num,
                 text=page_text,
                 tables=tables_on_page,
                 images=figures_on_page,
+                hyperlinks=hyperlinks_on_page,
                 offset=offset
             )
-            
+
             pages.append(extracted_page)
             offset += len(page_text)
         
@@ -560,6 +591,54 @@ class DocumentIntelligenceExtractor:
             placeholder=placeholder
         )
     
+    def _extract_hyperlinks(self, doc: pymupdf.Document) -> list[PageHyperlink]:
+        """Extract hyperlinks from PDF using PyMuPDF.
+
+        Returns a list of PageHyperlink objects with URL and bounding box information.
+        """
+        hyperlinks = []
+
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+
+            # Get links from the page
+            links = page.get_links()
+
+            for link in links:
+                # Get link rectangle/bbox
+                rect = link.get("from", pymupdf.Rect())
+                bbox = (rect.x0, rect.y0, rect.x1, rect.y1)
+
+                # Get URL - can be external (uri) or internal (page reference)
+                url = link.get("uri", "")
+
+                if not url:
+                    # Internal link to another page
+                    if "page" in link:
+                        url = f"#page-{link['page'] + 1}"
+
+                if url:
+                    # Try to extract text within the link bbox
+                    link_text = ""
+                    try:
+                        words = page.get_text("words", clip=rect)
+                        if words:
+                            # Combine words within the bbox
+                            link_text = " ".join(word[4] for word in words)
+                    except Exception as e:
+                        logger.debug(f"Could not extract link text: {e}")
+
+                    hyperlink = PageHyperlink(
+                        page_num=page_num,
+                        bbox=bbox,
+                        url=url,
+                        link_text=link_text
+                    )
+                    hyperlinks.append(hyperlink)
+
+        logger.info(f"Extracted {len(hyperlinks)} hyperlinks from PDF")
+        return hyperlinks
+
     @staticmethod
     def _crop_image_from_pdf(
         doc: pymupdf.Document,
@@ -605,9 +684,13 @@ class DocumentIntelligenceExtractor:
         result: AnalyzeResult,
         page,
         tables_on_page: list[ExtractedTable],
-        figures_on_page: list[ExtractedImage]
+        figures_on_page: list[ExtractedImage],
+        hyperlinks_on_page: list[PageHyperlink] = None
     ) -> str:
-        """Build page text with tables and figures inserted as placeholders."""
+        """Build page text with tables, figures, and hyperlinks inserted."""
+        if hyperlinks_on_page is None:
+            hyperlinks_on_page = []
+
         page_offset = page.spans[0].offset
         page_length = page.spans[0].length
         
@@ -689,9 +772,155 @@ class DocumentIntelligenceExtractor:
                     page_text += figures_on_page[obj_idx].placeholder
                 added_objects.add(mask_char)
         
+        # Apply hyperlinks by replacing text with markdown links
+        page_text = self._apply_hyperlinks(page, page_text, hyperlinks_on_page)
+
+        # Extract and preserve URLs from PageFooter comments
+        page_text = self._preserve_pagefooter_urls(page_text)
+
         # Clean up
         page_text = page_text.replace("<!-- PageBreak -->", "")
         page_text = page_text.strip()
-        
+
+        return page_text
+
+    def _apply_hyperlinks(
+        self,
+        page,
+        page_text: str,
+        hyperlinks: list[PageHyperlink]
+    ) -> str:
+        """Apply hyperlinks to page text by replacing text with markdown links.
+
+        Uses the link_text extracted by PyMuPDF from the link bbox.
+        Handles multi-line links by merging consecutive links with the same URL.
+        """
+        if not hyperlinks:
+            return page_text
+
+        # Group links by URL to handle multi-line links
+        # Multi-line links often get split but point to the same URL
+        from collections import defaultdict
+        links_by_url = defaultdict(list)
+        for hyperlink in hyperlinks:
+            links_by_url[hyperlink.url].append(hyperlink)
+
+        # Merge links with the same URL
+        merged_hyperlinks = []
+        for url, link_group in links_by_url.items():
+            if len(link_group) == 1:
+                # Single link, no merging needed
+                merged_hyperlinks.append(link_group[0])
+            else:
+                # Multiple links with same URL - merge them
+                merged_text = " ".join(link.link_text.strip() for link in link_group)
+                merged = PageHyperlink(
+                    page_num=link_group[0].page_num,
+                    bbox=link_group[0].bbox,
+                    url=url,
+                    link_text=merged_text
+                )
+                merged_hyperlinks.append(merged)
+                logger.info(f"Merged {len(link_group)} links for URL {url[:50]}... merged_text='{merged_text}'")
+
+        # Build replacements list
+        link_replacements = []
+
+        for hyperlink in merged_hyperlinks:
+            # Use the link_text that was extracted from the PDF
+            link_text = hyperlink.link_text.strip()
+
+            if not link_text:
+                logger.debug(f"Skipping hyperlink with no text: {hyperlink.url}")
+                continue
+
+            # Strip leading/trailing quotes that might be part of the bbox but not the link
+            # Be careful to preserve punctuation after closing quotes (e.g., "text".)
+            link_text_cleaned = link_text.lstrip('\'"''""').rstrip('\'"''""')
+
+            # Create markdown link with cleaned text
+            markdown_link = f"[{link_text_cleaned}]({hyperlink.url})"
+
+            # Try to find the text in page_text
+            if link_text_cleaned in page_text:
+                link_replacements.append((link_text_cleaned, markdown_link))
+            elif link_text in page_text:
+                # Use original if it matches better
+                markdown_link = f"[{link_text}]({hyperlink.url})"
+                link_replacements.append((link_text, markdown_link))
+            else:
+                # Try with flexible whitespace (for multi-line links)
+                import re
+                # Replace spaces with \s+ to match any whitespace including newlines
+                flexible_pattern = re.escape(link_text_cleaned).replace(r'\ ', r'\s+')
+                match = re.search(flexible_pattern, page_text, re.MULTILINE)
+                if match:
+                    original_multiline = match.group()
+                    markdown_multiline = f"[{original_multiline}]({hyperlink.url})"
+                    link_replacements.append((original_multiline, markdown_multiline))
+                    logger.debug(f"Found multi-line link: '{original_multiline}' -> '{hyperlink.url}'")
+                else:
+                    # Try without trailing punctuation
+                    link_text_no_punct = link_text_cleaned.rstrip('.,;:!?')
+                    if link_text_no_punct in page_text:
+                        # Find the text with its original punctuation in the page
+                        pattern = re.escape(link_text_no_punct) + r'[.,;:!?]?'
+                        match = re.search(pattern, page_text)
+                        if match:
+                            original_with_punct = match.group()
+                            markdown_with_punct = f"[{original_with_punct}]({hyperlink.url})"
+                            link_replacements.append((original_with_punct, markdown_with_punct))
+                    else:
+                        logger.debug(f"Could not find link text in page: '{link_text}' (cleaned: '{link_text_cleaned}')")
+
+        # Apply replacements carefully to avoid double-linking
+        # When multiple links have the same text (e.g., multiple "here."), we need to replace them
+        # one at a time, ensuring we don't replace text that's already inside markdown brackets
+        for original_text, markdown_link in link_replacements:
+            # Find the first occurrence that's NOT already inside a markdown link
+            import re
+            # Pattern to match the original text not preceded by '[' and not followed by ']('
+            # This prevents replacing text that's already been made into a link
+            escaped_text = re.escape(original_text)
+            pattern = f'(?<!\\[){escaped_text}(?!\\]\\()'
+
+            match = re.search(pattern, page_text)
+            if match:
+                # Replace this specific occurrence
+                start, end = match.span()
+                page_text = page_text[:start] + markdown_link + page_text[end:]
+                logger.info(f"Applied hyperlink: '{original_text}' -> '{markdown_link}'")
+
+        return page_text
+
+    def _preserve_pagefooter_urls(self, page_text: str) -> str:
+        """Extract URLs from PageFooter HTML comments and append them as footnotes.
+
+        PageFooter comments often contain URLs that should be preserved.
+        Example: <!-- PageFooter="... https://example.com" -->
+        """
+        import re
+
+        # Find PageFooter comments
+        pagefooter_pattern = r'<!-- PageFooter="(.+?)" -->'
+        matches = re.findall(pagefooter_pattern, page_text)
+
+        for footer_content in matches:
+            # Extract URLs from footer content
+            url_pattern = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
+            urls = re.findall(url_pattern, footer_content)
+
+            for url in urls:
+                # Check if URL is already in the visible text (not in comment)
+                visible_text = re.sub(pagefooter_pattern, '', page_text)
+                if url not in visible_text:
+                    # Add URL as footnote before the comment
+                    page_text = page_text.replace(
+                        f'<!-- PageFooter="{footer_content}" -->',
+                        f'\n\n**Reference:** {url}\n\n<!-- PageFooter="{footer_content}" -->',
+                        1
+                    )
+                    logger.debug(f"Extracted PageFooter URL: {url}")
+
         return page_text
 
