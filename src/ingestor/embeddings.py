@@ -158,14 +158,16 @@ class EmbeddingsGenerator:
         semaphore = self._get_semaphore()
         dimensions_args = self._get_dimensions_args()
         
-        async with semaphore:
-            async for attempt in AsyncRetrying(
-                retry=retry_if_exception_type(RateLimitError),
-                wait=wait_random_exponential(min=self.DEFAULT_RETRY_MIN_WAIT, max=self.DEFAULT_RETRY_MAX_WAIT),
-                stop=stop_after_attempt(self.max_retries),
-                before_sleep=self._before_retry_sleep
-            ):
-                with attempt:
+        # Retry loop OUTSIDE semaphore to avoid holding it during backoff
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception_type(RateLimitError),
+            wait=wait_random_exponential(min=self.DEFAULT_RETRY_MIN_WAIT, max=self.DEFAULT_RETRY_MAX_WAIT),
+            stop=stop_after_attempt(self.max_retries),
+            before_sleep=self._before_retry_sleep
+        ):
+            with attempt:
+                # Only acquire semaphore for actual API call
+                async with semaphore:
                     response = await self.client.embeddings.create(
                         model=self.deployment,
                         input=text,
@@ -173,7 +175,7 @@ class EmbeddingsGenerator:
                     )
                     logger.debug(f"Generated embedding for text ({len(text)} chars)")
                     return response.data[0].embedding
-        
+
         # This should not be reached due to tenacity, but for safety
         raise RuntimeError("Failed to generate embedding after retries")
     
@@ -182,14 +184,16 @@ class EmbeddingsGenerator:
         semaphore = self._get_semaphore()
         dimensions_args = self._get_dimensions_args()
         
-        async with semaphore:
-            async for attempt in AsyncRetrying(
-                retry=retry_if_exception_type(RateLimitError),
-                wait=wait_random_exponential(min=self.DEFAULT_RETRY_MIN_WAIT, max=self.DEFAULT_RETRY_MAX_WAIT),
-                stop=stop_after_attempt(self.max_retries),
-                before_sleep=self._before_retry_sleep
-            ):
-                with attempt:
+        # Retry loop OUTSIDE semaphore to avoid holding it during backoff
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception_type(RateLimitError),
+            wait=wait_random_exponential(min=self.DEFAULT_RETRY_MIN_WAIT, max=self.DEFAULT_RETRY_MAX_WAIT),
+            stop=stop_after_attempt(self.max_retries),
+            before_sleep=self._before_retry_sleep
+        ):
+            with attempt:
+                # Only acquire semaphore for actual API call
+                async with semaphore:
                     response = await self.client.embeddings.create(
                         model=self.deployment,
                         input=batch.texts,
