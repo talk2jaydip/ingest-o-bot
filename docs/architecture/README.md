@@ -32,6 +32,7 @@ Check the [Data Flow Diagram](03_DATA_FLOW.md) to understand how data moves thro
 - [Technical Reference](../reference/) - Detailed technical specifications
 - [Configuration Guide](../guides/CONFIGURATION.md) - Configuration options
 - [Performance Tuning](../guides/PERFORMANCE_TUNING.md) - Optimization strategies
+- [Logging Guide](../LOGGING_GUIDE.md) - Centralized logging system and best practices
 
 ---
 

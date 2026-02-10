@@ -35,9 +35,10 @@ Located in `docs/guides/`:
 | 4 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
 | 5 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
 | 6 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
-| 7 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
-| 8 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
-| 9 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
+| 7 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
+| 8 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
+| 9 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
+| 10 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
 
 ---
 
@@ -119,6 +120,7 @@ Located in `docs/architecture/` - Visual representations of system design:
 ```
 docs/
 ├── INDEX.md                       # This file - main documentation index
+├── LOGGING_GUIDE.md              # Centralized logging system guide
 │
 ├── guides/                        # User-facing guides (9 guides)
 │   ├── QUICKSTART.md             # Get started in 5 minutes
@@ -260,6 +262,7 @@ This documentation structure was reorganized to match the implementation order:
 - **Optimizing performance?** → Check [Performance Tuning Guide](guides/PERFORMANCE_TUNING.md)
 - **Configuring the pipeline?** → Review [Configuration Guide](guides/CONFIGURATION.md)
 - **Managing environments?** → See [Environment & Secrets Guide](guides/ENVIRONMENT_AND_SECRETS.md)
+- **Configuring logging?** → See [Logging Guide](LOGGING_GUIDE.md)
 - **Understanding a feature?** → Check [Features](reference/17_FEATURES.md)
 - **Troubleshooting?** → Review [Environment Variables](reference/12_ENVIRONMENT_VARIABLES.md)
 - **Advanced topics?** → Browse [Architecture](reference/18_ARCHITECTURE.md)

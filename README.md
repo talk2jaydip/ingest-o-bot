@@ -209,6 +209,7 @@ The UI will open at http://localhost:7860 with features for:
 - **[Configuration Guide](docs/guides/CONFIGURATION.md)** - Detailed configuration options
 - **[Environment & Secrets](docs/guides/ENVIRONMENT_AND_SECRETS.md)** - Managing multiple environments
 - **[Index Deployment Guide](docs/guides/INDEX_DEPLOYMENT_GUIDE.md)** - Azure Search index setup
+- **[Logging Guide](docs/LOGGING_GUIDE.md)** - Centralized logging system and best practices
 
 ### Performance & Optimization
 - **[Batch Processing Guide](docs/guides/BATCH_PROCESSING.md)** - Parallel document processing
