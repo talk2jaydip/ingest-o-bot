@@ -1,5 +1,6 @@
 """Azure AI Search uploader - direct document upload without indexers/skillsets."""
 
+import asyncio
 from typing import Optional
 
 from azure.core.credentials import AzureKeyCredential
@@ -18,16 +19,18 @@ MAX_BATCH_SIZE = 1000
 class SearchUploader:
     """Uploads chunk documents directly to Azure AI Search index."""
     
-    def __init__(self, config: SearchConfig, use_merge_or_upload: bool = True):
+    def __init__(self, config: SearchConfig, use_merge_or_upload: bool = True, max_batch_concurrency: int = 5):
         """Initialize search uploader.
-        
+
         Args:
             config: Search configuration
             use_merge_or_upload: If True, use merge_or_upload_documents (idempotent).
                                 If False, use upload_documents (replaces documents).
+            max_batch_concurrency: Maximum number of concurrent batch uploads
         """
         self.config = config
         self.use_merge_or_upload = use_merge_or_upload
+        self.max_batch_concurrency = max_batch_concurrency
         
         # Create search client
         credential = AzureKeyCredential(config.api_key) if config.api_key else None
@@ -36,7 +39,47 @@ class SearchUploader:
             index_name=config.index_name,
             credential=credential
         )
-    
+
+    async def _upload_batch(
+        self,
+        batch: list[dict],
+        batch_num: int,
+        total_batches: int
+    ) -> tuple[int, int]:
+        """Upload a single batch to search index.
+
+        Args:
+            batch: List of search documents to upload
+            batch_num: Batch number (1-indexed for logging)
+            total_batches: Total number of batches
+
+        Returns:
+            Tuple of (succeeded_count, failed_count)
+        """
+        logger.info(f"Uploading batch {batch_num}/{total_batches} ({len(batch)} documents)")
+
+        # Use merge_or_upload for idempotency, or upload_documents to replace
+        if self.use_merge_or_upload:
+            result = await self.client.merge_or_upload_documents(documents=batch)
+        else:
+            result = await self.client.upload_documents(documents=batch)
+
+        # Count successful/failed uploads in this batch
+        batch_succeeded = sum(1 for r in result if r.succeeded)
+        batch_failed = len(result) - batch_succeeded
+
+        if batch_failed > 0:
+            # Log failed documents for debugging
+            failed_docs = [r for r in result if not r.succeeded]
+            for failed in failed_docs[:5]:  # Log first 5 failures
+                logger.warning(f"Failed to upload document {failed.key}: {failed.error_message}")
+            if len(failed_docs) > 5:
+                logger.warning(f"... and {len(failed_docs) - 5} more failures")
+
+        logger.info(f"Batch {batch_num}: {batch_succeeded} succeeded, {batch_failed} failed")
+
+        return batch_succeeded, batch_failed
+
     async def upload_documents(self, chunk_docs: list[ChunkDocument], include_embeddings: bool = True) -> int:
         """Upload chunk documents to Search index with batching.
         
@@ -63,40 +106,40 @@ class SearchUploader:
         
         total_succeeded = 0
         total_failed = 0
-        
+
         try:
-            for batch_index, batch in enumerate(batches):
-                batch_num = batch_index + 1
-                logger.info(f"Uploading batch {batch_num}/{len(batches)} ({len(batch)} documents)")
-                
-                # Use merge_or_upload for idempotency, or upload_documents to replace
-                if self.use_merge_or_upload:
-                    result = await self.client.merge_or_upload_documents(documents=batch)
+            # Create semaphore to limit concurrent uploads (avoid overwhelming API)
+            batch_semaphore = asyncio.Semaphore(self.max_batch_concurrency)
+
+            async def upload_with_semaphore(batch, batch_num, total_batches):
+                async with batch_semaphore:
+                    return await self._upload_batch(batch, batch_num, total_batches)
+
+            # Upload all batches in parallel with controlled concurrency
+            logger.info(f"Uploading {len(batches)} batches in parallel (max concurrency: {self.max_batch_concurrency})")
+
+            upload_tasks = [
+                upload_with_semaphore(batch, i + 1, len(batches))
+                for i, batch in enumerate(batches)
+            ]
+
+            batch_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+            # Process results
+            for i, result in enumerate(batch_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Batch {i + 1} failed: {result}")
+                    total_failed += len(batches[i])  # Count all docs in failed batch as failed
                 else:
-                    result = await self.client.upload_documents(documents=batch)
-                
-                # Count successful/failed uploads in this batch
-                batch_succeeded = sum(1 for r in result if r.succeeded)
-                batch_failed = len(result) - batch_succeeded
-                
-                total_succeeded += batch_succeeded
-                total_failed += batch_failed
-                
-                if batch_failed > 0:
-                    # Log failed documents for debugging
-                    failed_docs = [r for r in result if not r.succeeded]
-                    for failed in failed_docs[:5]:  # Log first 5 failures
-                        logger.warning(f"Failed to upload document {failed.key}: {failed.error_message}")
-                    if len(failed_docs) > 5:
-                        logger.warning(f"... and {len(failed_docs) - 5} more failures")
-                
-                logger.info(f"Batch {batch_num}: {batch_succeeded} succeeded, {batch_failed} failed")
-            
+                    succeeded, failed = result
+                    total_succeeded += succeeded
+                    total_failed += failed
+
             if total_failed > 0:
                 logger.warning(f"Total: {total_succeeded} succeeded, {total_failed} failed out of {total_docs} documents")
             else:
                 logger.info(f"Successfully uploaded all {total_succeeded} documents")
-            
+
             return total_succeeded
         
         except Exception as e:
@@ -213,7 +256,12 @@ class SearchUploader:
         await self.client.close()
 
 
-def create_search_uploader(config: SearchConfig) -> SearchUploader:
-    """Factory function to create search uploader."""
-    return SearchUploader(config)
+def create_search_uploader(config: SearchConfig, max_batch_concurrency: int = 5) -> SearchUploader:
+    """Factory function to create search uploader.
+
+    Args:
+        config: Search configuration
+        max_batch_concurrency: Maximum number of concurrent batch uploads
+    """
+    return SearchUploader(config, max_batch_concurrency=max_batch_concurrency)
 
