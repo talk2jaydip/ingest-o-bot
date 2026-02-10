@@ -1,0 +1,107 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.claude/
+
+# Environment variables (CRITICAL - Never commit real credentials!)
+.env
+.env.local
+.env.*.local
+.env.dev
+.env.staging
+.env.prod
+.env.backup
+.env.production
+*.env
+!.env.example
+!.env.example.*
+*.key
+*.pem
+*.pfx
+*.p12
+credentials.json
+secrets.json
+config.json
+
+# Logs and artifacts
+logs/
+test_artifacts/
+artifacts/
+test_file/
+*.log
+nul
+src/logs/
+src/test_artifacts/
+src/artifacts/
+
+# Temporary files
+temp_output.txt
+*.tmp
+*.bak
+.env.backup_*
+backups/
+
+# Azure
+.azure/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Data files (potentially sensitive documents)
+data/
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+!examples/**/*.pdf
+!examples/**/*.docx
+!docs/**/*.pdf
+
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
