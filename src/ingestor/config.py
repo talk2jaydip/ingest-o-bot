@@ -412,50 +412,48 @@ class ArtifactsConfig:
 
         Args:
             input_mode: Optional input mode to auto-detect artifacts mode from.
-                       If not provided or AZURE_ARTIFACTS_MODE is set, uses explicit config.
 
-        Priority logic (highest to lowest):
-        1. If AZURE_ARTIFACTS_DIR is explicitly set → use LOCAL with that directory
-           (even if input_mode=blob, this overrides to store artifacts locally)
-        2. Else if AZURE_ARTIFACTS_MODE is explicitly set → use that
-        3. Else if AZURE_STORE_ARTIFACTS_TO_BLOB=true → use blob mode
-        4. Else if input_mode provided → follow input_mode (local→local, blob→blob)
-        5. Else → default to local
+        SIMPLIFIED Logic:
+        1. If AZURE_ARTIFACTS_DIR is set → LOCAL storage at that directory
+           (Overrides input_mode - useful for debugging blob inputs locally)
+        2. Otherwise → Follow input_mode (local input → local artifacts, blob input → blob artifacts)
+        3. Default → LOCAL if no input_mode provided
+
+        Deprecated flags (backwards compatibility, but prefer AZURE_ARTIFACTS_DIR):
+        - AZURE_ARTIFACTS_MODE: Still supported for explicit control
+        - AZURE_STORE_ARTIFACTS_TO_BLOB: Still supported but redundant with input_mode
         """
-        # Check if AZURE_ARTIFACTS_DIR is explicitly set (HIGHEST PRIORITY)
+        # Check if AZURE_ARTIFACTS_DIR is explicitly set (HIGHEST PRIORITY - OVERRIDE)
         artifacts_dir = os.getenv("AZURE_ARTIFACTS_DIR")
 
-        # Check for explicit artifacts mode setting
-        mode_str = os.getenv("AZURE_ARTIFACTS_MODE")
-
-        # Check for override flag to force blob storage
-        force_blob = os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "false").lower() == "true"
-
         if artifacts_dir:
-            # AZURE_ARTIFACTS_DIR explicitly set - prioritize local storage
+            # AZURE_ARTIFACTS_DIR explicitly set - use local storage
             mode = ArtifactsMode.LOCAL
             get_logger(__name__).info(
-                f"AZURE_ARTIFACTS_DIR={artifacts_dir}: Prioritizing local artifacts storage "
-                f"(overrides input_mode={'blob' if input_mode == InputMode.BLOB else 'local'})"
+                f"Using local artifacts storage: {artifacts_dir} "
+                f"(overrides input_mode={input_mode.value if input_mode else 'not set'})"
             )
-        elif mode_str:
-            # Explicit mode set - use it
-            mode = ArtifactsMode(mode_str.lower())
-        elif force_blob:
-            # Override flag set - force blob mode
-            mode = ArtifactsMode.BLOB
-            get_logger(__name__).info("AZURE_STORE_ARTIFACTS_TO_BLOB=true: Forcing blob artifacts storage")
-        elif input_mode:
-            # Auto-detect from input mode
-            if input_mode == InputMode.BLOB:
-                mode = ArtifactsMode.BLOB
-                get_logger(__name__).info("Auto-detected artifacts mode: blob (following input mode)")
-            else:
-                mode = ArtifactsMode.LOCAL
-                get_logger(__name__).info("Auto-detected artifacts mode: local (following input mode)")
         else:
-            # Default to local
-            mode = ArtifactsMode.LOCAL
+            # Check deprecated flags for backwards compatibility
+            mode_str = os.getenv("AZURE_ARTIFACTS_MODE")
+            force_blob = os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "").lower() == "true"
+
+            if mode_str:
+                # Explicit mode set (deprecated but supported)
+                mode = ArtifactsMode(mode_str.lower())
+                get_logger(__name__).info(f"Using AZURE_ARTIFACTS_MODE={mode.value} (deprecated, prefer removing this flag)")
+            elif force_blob:
+                # Override flag set (deprecated but supported)
+                mode = ArtifactsMode.BLOB
+                get_logger(__name__).info("Using AZURE_STORE_ARTIFACTS_TO_BLOB=true (deprecated, prefer removing this flag)")
+            elif input_mode:
+                # Follow input mode (RECOMMENDED approach)
+                mode = ArtifactsMode.BLOB if input_mode == InputMode.BLOB else ArtifactsMode.LOCAL
+                get_logger(__name__).info(f"Artifacts storage follows input mode: {mode.value}")
+            else:
+                # Default to local
+                mode = ArtifactsMode.LOCAL
+                get_logger(__name__).info("Using default: local artifacts storage")
 
         if mode == ArtifactsMode.LOCAL:
             local_dir = os.getenv("AZURE_ARTIFACTS_DIR", "./artifacts")
@@ -594,6 +592,30 @@ class PerformanceConfig:
 
 
 @dataclass
+class LoggingConfig:
+    """Logging configuration for production vs development."""
+    console_level: str = "INFO"      # Console log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    file_level: str = "DEBUG"        # File log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    write_artifacts: bool = True     # Write detailed artifact logs (DI, chunking, tables, figures)
+    use_colors: bool = True          # Enable colorful console logging with ANSI colors
+
+    @classmethod
+    def from_env(cls) -> "LoggingConfig":
+        """Load from environment variables."""
+        console_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        file_level = os.getenv("LOG_FILE_LEVEL", "DEBUG").upper()
+        write_artifacts = os.getenv("LOG_ARTIFACTS", "true").lower() == "true"
+        use_colors = os.getenv("LOG_USE_COLORS", "true").lower() == "true"
+
+        return cls(
+            console_level=console_level,
+            file_level=file_level,
+            write_artifacts=write_artifacts,
+            use_colors=use_colors
+        )
+
+
+@dataclass
 class PipelineConfig:
     """Complete pipeline configuration."""
     search: SearchConfig
@@ -606,6 +628,7 @@ class PipelineConfig:
     key_vault: KeyVaultConfig
     chunking: ChunkingConfig
     performance: PerformanceConfig
+    logging: LoggingConfig
     content_understanding: Optional[ContentUnderstandingConfig] = None
 
     # Processing options
@@ -655,6 +678,7 @@ class PipelineConfig:
         key_vault = KeyVaultConfig.from_env()
         chunking = ChunkingConfig.from_env()
         performance = PerformanceConfig.from_env()
+        logging_config = LoggingConfig.from_env()
         content_understanding = ContentUnderstandingConfig.from_env()
 
         # Processing options
@@ -682,6 +706,7 @@ class PipelineConfig:
             key_vault=key_vault,
             chunking=chunking,
             performance=performance,
+            logging=logging_config,
             content_understanding=content_understanding,
             media_describer_mode=media_describer_mode,
             table_render_mode=table_render_mode,

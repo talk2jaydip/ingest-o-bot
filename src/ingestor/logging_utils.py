@@ -13,6 +13,70 @@ from typing import Any, Dict, Optional
 LOGGER_NAME = "ingestor"
 
 
+# ANSI color codes for colorful console logging
+class ColorCodes:
+    """ANSI color codes for terminal output."""
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+
+    # Foreground colors
+    BLACK = '\033[30m'
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+
+    # Bright foreground colors
+    BRIGHT_BLACK = '\033[90m'
+    BRIGHT_RED = '\033[91m'
+    BRIGHT_GREEN = '\033[92m'
+    BRIGHT_YELLOW = '\033[93m'
+    BRIGHT_BLUE = '\033[94m'
+    BRIGHT_MAGENTA = '\033[95m'
+    BRIGHT_CYAN = '\033[96m'
+    BRIGHT_WHITE = '\033[97m'
+
+
+class ColoredFormatter(logging.Formatter):
+    """Colored log formatter for console output.
+
+    Adds colors to log levels:
+    - DEBUG: Cyan
+    - INFO: Green
+    - WARNING: Yellow
+    - ERROR: Red
+    - CRITICAL: Bold Red
+    """
+
+    LEVEL_COLORS = {
+        logging.DEBUG: ColorCodes.CYAN,
+        logging.INFO: ColorCodes.GREEN,
+        logging.WARNING: ColorCodes.YELLOW,
+        logging.ERROR: ColorCodes.RED,
+        logging.CRITICAL: ColorCodes.BOLD + ColorCodes.RED,
+    }
+
+    def format(self, record):
+        """Format log record with colors."""
+        # Save original levelname
+        original_levelname = record.levelname
+
+        # Add color to levelname
+        level_color = self.LEVEL_COLORS.get(record.levelno, ColorCodes.RESET)
+        record.levelname = f"{level_color}{record.levelname}{ColorCodes.RESET}"
+
+        # Format the message
+        formatted = super().format(record)
+
+        # Restore original levelname (for other handlers)
+        record.levelname = original_levelname
+
+        return formatted
+
+
 def get_logger(name: str = None) -> logging.Logger:
     """Get the centralized logger instance.
 
@@ -32,8 +96,19 @@ def get_logger(name: str = None) -> logging.Logger:
     return logging.getLogger(LOGGER_NAME)
 
 
-def setup_logging(log_dir: str = "./logs") -> tuple[logging.Logger, Path]:
+def setup_logging(
+    log_dir: str = "./logs",
+    console_level: str = "INFO",
+    file_level: str = "DEBUG",
+    use_colors: bool = True
+) -> tuple[logging.Logger, Path]:
     """Setup comprehensive logging for the pipeline.
+
+    Args:
+        log_dir: Directory for log files
+        console_level: Log level for console output (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        file_level: Log level for file output (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        use_colors: Enable colored console output (default: True, disable for CI/CD)
 
     Returns:
         Tuple of (logger, log_directory_path)
@@ -63,19 +138,28 @@ def setup_logging(log_dir: str = "./logs") -> tuple[logging.Logger, Path]:
     # Remove existing handlers
     logger.handlers.clear()
 
-    # Console handler (INFO level) - now uses UTF-8 wrapped stdout
+    # Console handler - with colorful output
     console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    console_handler.setLevel(getattr(logging, console_level.upper()))
+
+    # Use colored formatter if colors are enabled
+    if use_colors:
+        console_formatter = ColoredFormatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+    else:
+        console_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
     
-    # File handler (DEBUG level) - with UTF-8 encoding for full content logging
+    # File handler - with UTF-8 encoding for full content logging
     file_handler = logging.FileHandler(run_log_dir / "pipeline.log", encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(getattr(logging, file_level.upper()))
     file_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -87,20 +171,24 @@ def setup_logging(log_dir: str = "./logs") -> tuple[logging.Logger, Path]:
     return logger, run_log_dir
 
 
-def log_di_response(log_dir: Path, doc_name: str, di_result: Any) -> None:
+def log_di_response(log_dir: Path, doc_name: str, di_result: Any, write_artifacts: bool = True) -> None:
     """Log Document Intelligence response to file.
-    
+
     Args:
         log_dir: Directory to save logs
         doc_name: Document name
         di_result: Document Intelligence result object
+        write_artifacts: If False, skip writing (for production)
     """
+    if not write_artifacts:
+        return
+
     di_log_dir = log_dir / "di_responses"
     di_log_dir.mkdir(exist_ok=True)
-    
+
     # Save full DI response
     response_file = di_log_dir / f"{doc_name}_di_response.json"
-    
+
     try:
         # Convert DI result to dict
         if hasattr(di_result, 'as_dict'):
@@ -109,23 +197,27 @@ def log_di_response(log_dir: Path, doc_name: str, di_result: Any) -> None:
             result_dict = di_result.__dict__
         else:
             result_dict = {"raw": str(di_result)}
-        
+
         with open(response_file, 'w', encoding='utf-8') as f:
             json.dump(result_dict, f, indent=2, default=str)
 
-        get_logger().info(f"DI response saved: {response_file}")
+        get_logger().debug(f"DI response saved: {response_file}")
     except Exception as e:
         get_logger().error(f"Failed to save DI response: {e}")
 
 
-def log_di_summary(log_dir: Path, doc_name: str, pages: list) -> None:
+def log_di_summary(log_dir: Path, doc_name: str, pages: list, write_artifacts: bool = True) -> None:
     """Log summary of DI extraction results.
-    
+
     Args:
         log_dir: Directory to save logs
         doc_name: Document name
         pages: List of extracted pages
+        write_artifacts: If False, skip writing (for production)
     """
+    if not write_artifacts:
+        return
+
     # Create directory first to avoid FileNotFoundError
     di_log_dir = log_dir / "di_responses"
     di_log_dir.mkdir(exist_ok=True)
@@ -186,18 +278,22 @@ def log_di_summary(log_dir: Path, doc_name: str, pages: list) -> None:
             f.write(f"{page.text}\n")
             f.write(f"{'-'*60}\n")
             f.write(f"(Total length: {len(page.text)} characters)\n")
-    
-    get_logger().info(f"DI summary saved: {summary_file}")
+
+    get_logger().debug(f"DI summary saved: {summary_file}")
 
 
-def log_chunking_process(log_dir: Path, doc_name: str, chunks: list) -> None:
+def log_chunking_process(log_dir: Path, doc_name: str, chunks: list, write_artifacts: bool = True) -> None:
     """Log chunking process details.
-    
+
     Args:
         log_dir: Directory to save logs
         doc_name: Document name
         chunks: List of generated chunks
+        write_artifacts: If False, skip writing (for production)
     """
+    if not write_artifacts:
+        return
+
     chunk_log_dir = log_dir / "chunking"
     chunk_log_dir.mkdir(exist_ok=True)
     
@@ -230,7 +326,11 @@ def log_chunking_process(log_dir: Path, doc_name: str, chunks: list) -> None:
                 f.write(f"Page: {chunk.page_num + 1}\n")
                 f.write(f"Content Length: {len(chunk.text)} characters\n")
                 f.write(f"Token Count: {chunk.token_count}\n")
-                
+
+                # Log page header/title if present
+                if hasattr(chunk, 'page_header') and chunk.page_header:
+                    f.write(f"Page Header/Title: {chunk.page_header}\n")
+
                 # Check if chunk contains tables or figures
                 if chunk.tables:
                     f.write(f"Contains: {len(chunk.tables)} TABLE(S)\n")
@@ -250,14 +350,14 @@ def log_chunking_process(log_dir: Path, doc_name: str, chunks: list) -> None:
                 if chunk.char_span:
                     f.write(f"Character Span: {chunk.char_span}\n")
                 f.write(f"\n")
-    
-    get_logger().info(f"Chunking log saved: {chunk_file}")
+
+    get_logger().debug(f"Chunking log saved: {chunk_file}")
 
 
-def log_table_processing(log_dir: Path, doc_name: str, page_num: int, table_idx: int, 
-                         table: Any, rendered_text: str) -> None:
+def log_table_processing(log_dir: Path, doc_name: str, page_num: int, table_idx: int,
+                         table: Any, rendered_text: str, write_artifacts: bool = True) -> None:
     """Log table processing details.
-    
+
     Args:
         log_dir: Directory to save logs
         doc_name: Document name
@@ -265,7 +365,11 @@ def log_table_processing(log_dir: Path, doc_name: str, page_num: int, table_idx:
         table_idx: Table index on page
         table: Original table object
         rendered_text: Rendered text from TableRenderer
+        write_artifacts: If False, skip writing (for production)
     """
+    if not write_artifacts:
+        return
+
     table_log_dir = log_dir / "tables"
     table_log_dir.mkdir(exist_ok=True)
     
@@ -298,14 +402,14 @@ def log_table_processing(log_dir: Path, doc_name: str, page_num: int, table_idx:
         f.write(f"{'-'*60}\n")
         f.write(f"{rendered_text}\n")
         f.write(f"{'-'*60}\n\n")
-    
-    get_logger().info(f"Table processing log saved: {table_file}")
+
+    get_logger().debug(f"Table processing log saved: {table_file}")
 
 
 def log_figure_processing(log_dir: Path, doc_name: str, page_num: int, figure_idx: int,
-                          figure: Any, description: Optional[str] = None) -> None:
+                          figure: Any, description: Optional[str] = None, write_artifacts: bool = True) -> None:
     """Log figure processing details.
-    
+
     Args:
         log_dir: Directory to save logs
         doc_name: Document name
@@ -313,7 +417,11 @@ def log_figure_processing(log_dir: Path, doc_name: str, page_num: int, figure_id
         figure_idx: Figure index on page
         figure: Original figure object
         description: Generated description
+        write_artifacts: If False, skip writing (for production)
     """
+    if not write_artifacts:
+        return
+
     figure_log_dir = log_dir / "figures"
     figure_log_dir.mkdir(exist_ok=True)
     
@@ -349,8 +457,8 @@ def log_figure_processing(log_dir: Path, doc_name: str, page_num: int, figure_id
         with open(image_file, 'wb') as img_f:
             img_f.write(figure.image_bytes)
         f.write(f"Image saved to: {image_file.name}\n")
-    
-    get_logger().info(f"Figure processing log saved: {figure_file}")
+
+    get_logger().debug(f"Figure processing log saved: {figure_file}")
 
 
 def log_pipeline_summary(log_dir: Path, stats: Dict[str, Any]) -> None:
