@@ -225,6 +225,70 @@ class IndexDeploymentManager:
                 facetable=True,
                 analyzer_name="keyword"
             ),
+            SearchableField(
+                name="product_family",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+                facetable=True,
+                analyzer_name="en.microsoft"
+            ),
+            SearchableField(
+                name="productTradeNames",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+                facetable=True,
+                analyzer_name="standard.lucene"  # Allow partial matching (e.g., "pacemaker" matches without hyphens)
+            ),
+            SearchableField(
+                name="prod_from_url",
+                type=SearchFieldDataType.String,
+                filterable=True,
+                sortable=True,
+                facetable=True,
+                analyzer_name="keyword"
+            ),
+            SearchableField(
+                name="title",
+                type=SearchFieldDataType.String,
+                filterable=True,
+                sortable=True,
+                analyzer_name="standard.lucene"  # Tokenized without stemming for page headers
+            ),
+            SearchableField(
+                name="literatureType",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+                facetable=True,
+                analyzer_name="keyword"
+            ),
+            SearchableField(
+                name="partNumber",
+                type=SearchFieldDataType.String,
+                filterable=True,
+                sortable=True,
+                analyzer_name="keyword"
+            ),
+            SearchableField(
+                name="applicableTo",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+                facetable=True,
+                analyzer_name="en.microsoft"
+            ),
+            SearchableField(
+                name="model",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+                facetable=True,
+                analyzer_name="keyword"
+            ),
+            SimpleField(
+                name="publishedDate",
+                type=SearchFieldDataType.DateTimeOffset,
+                filterable=True,
+                sortable=True,
+                facetable=True
+            ),
             SimpleField(
                 name="pageNumber",
                 type=SearchFieldDataType.Int32,
@@ -299,10 +363,24 @@ class IndexDeploymentManager:
                 name="productBoostingProfile",
                 text_weights=TextWeights(
                     weights={
+                        "title": 3.0,
+                        "productTradeNames": 2.5,
+                        "product_family": 2.0,
+                        "partNumber": 2.5,
+                        "model": 2.0,
                         "content": 1.0,
-                        "filename": 1.5
+                        "filename": 1.5,
+                        "applicableTo": 1.8
                     }
                 ),
+                functions=[
+                    FreshnessScoringFunction(
+                        field_name="publishedDate",
+                        boost=2.0,
+                        parameters=FreshnessScoringParameters(boosting_duration="P365D"),
+                        interpolation=ScoringFunctionInterpolation.LINEAR
+                    )
+                ],
                 function_aggregation=ScoringFunctionAggregation.SUM
             ),
             # Profile 2: Content-focused for general RAG queries
@@ -311,20 +389,33 @@ class IndexDeploymentManager:
                 text_weights=TextWeights(
                     weights={
                         "content": 3.0,         # Primary focus on content
+                        "title": 2.5,           # Page headers important
+                        "applicableTo": 2.0,    # Context matters
+                        "productTradeNames": 1.5,
+                        "product_family": 1.5,
                         "category": 1.2,
                         "filename": 1.0
                     }
                 ),
+                functions=[
+                    FreshnessScoringFunction(
+                        field_name="publishedDate",
+                        boost=1.5,  # Slightly lower boost than product profile
+                        parameters=FreshnessScoringParameters(boosting_duration="P365D"),
+                        interpolation=ScoringFunctionInterpolation.LINEAR
+                    )
+                ],
                 function_aggregation=ScoringFunctionAggregation.SUM
             )
         ]
 
         # Create suggester for autocomplete functionality
         # Note: Suggesters only support default analyzer and language analyzers
+        # Removed fields with keyword analyzer (productTradeNames, partNumber)
         suggesters = [
             SearchSuggester(
                 name="product-suggester",
-                source_fields=["content"]
+                source_fields=["title", "product_family"]
             )
         ]
 
@@ -332,12 +423,17 @@ class IndexDeploymentManager:
         semantic_config = SemanticConfiguration(
             name="default-semantic-config",
             prioritized_fields=SemanticPrioritizedFields(
-                title_field=SemanticField(field_name="filename"),
+                title_field=SemanticField(field_name="title"),
                 content_fields=[
-                    SemanticField(field_name="content")
+                    SemanticField(field_name="content"),
+                    SemanticField(field_name="applicableTo"),  # Additional context for semantic ranking
                 ],
                 keywords_fields=[
-                    SemanticField(field_name="category")
+                    SemanticField(field_name="productTradeNames"),
+                    SemanticField(field_name="product_family"),
+                    SemanticField(field_name="partNumber"),
+                    SemanticField(field_name="model"),
+                    SemanticField(field_name="category")  # Added for better semantic understanding
                 ]
             )
         )
@@ -602,10 +698,10 @@ class IndexDeploymentManager:
                 config = index.semantic_search.configurations[0]
                 if config.prioritized_fields.title_field:
                     title_field = config.prioritized_fields.title_field.field_name
-                    if title_field == "filename":
-                        print(f"   ✓ Semantic title field correctly set to 'filename'")
-                    else:
-                        warnings.append(f"Semantic title field set to '{title_field}', expected 'filename'")
+                    if title_field == "id":
+                        issues.append("Semantic title field still set to 'id' instead of 'title'")
+                    elif title_field == "title":
+                        print(f"   ✓ Semantic title field correctly set to 'title'")
                 else:
                     issues.append("No title field in semantic configuration")
                 
@@ -630,12 +726,12 @@ class IndexDeploymentManager:
                 warnings.append("No suggester configured (autocomplete disabled)")
 
             # Check analyzers on key fields
-            filename_field = next((f for f in index.fields if f.name == "filename"), None)
-            if filename_field and hasattr(filename_field, 'analyzer_name'):
-                if filename_field.analyzer_name == "keyword":
-                    print(f"   ✓ Filename field uses keyword analyzer")
+            title_field = next((f for f in index.fields if f.name == "title"), None)
+            if title_field and hasattr(title_field, 'analyzer_name'):
+                if title_field.analyzer_name == "standard.lucene":
+                    print(f"   ✓ Title field uses standard.lucene analyzer")
                 else:
-                    warnings.append(f"Filename analyzer is '{filename_field.analyzer_name}', expected 'keyword'")
+                    warnings.append(f"Title analyzer is '{title_field.analyzer_name}', expected 'standard.lucene'")
 
             # Check embeddings field retrievability
             embeddings_field = next((f for f in index.fields if f.name == "embeddings"), None)
