@@ -105,3 +105,6 @@ data/
 Thumbs.db
 .Spotlight-V100
 .Trashes
+
+# Local configuration (tracked with generic version on GitHub)
+src/ingestor/index.py
