@@ -111,6 +111,11 @@ Examples:
         help="Enable verbose/debug logging"
     )
     parser.add_argument(
+        "--no-colors",
+        action="store_true",
+        help="Disable colorful console output (useful for CI/CD or log files)"
+    )
+    parser.add_argument(
         "--check-index",
         action="store_true",
         help="Check if index exists, then exit (no ingestion)"
@@ -133,19 +138,34 @@ Examples:
         help="Run pre-check validation on configuration and environment, then exit (no document processing)"
     )
     args = parser.parse_args()
-    
-    # Setup comprehensive logging
-    logger, log_dir = setup_logging()
-    
-    # Set verbose logging if requested
+
+    # Load logging configuration from environment
+    from ingestor.config import LoggingConfig
+    logging_config = LoggingConfig.from_env()
+
+    # Override with verbose flag if provided
     if args.verbose:
-        import logging
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.setLevel(logging.DEBUG)
-    
+        logging_config.console_level = "DEBUG"
+        logging_config.file_level = "DEBUG"
+
+    # Override with no-colors flag if provided
+    if args.no_colors:
+        logging_config.use_colors = False
+
+    # Setup comprehensive logging with configured levels and colors
+    logger, log_dir = setup_logging(
+        console_level=logging_config.console_level,
+        file_level=logging_config.file_level,
+        use_colors=logging_config.use_colors
+    )
+
     logger.info("="*70)
     logger.info("ingestor - Document Ingestion Pipeline")
     logger.info("="*70)
+    logger.info(f"Console log level: {logging_config.console_level}")
+    logger.info(f"File log level: {logging_config.file_level}")
+    logger.info(f"Write artifact logs: {logging_config.write_artifacts}")
+    logger.info(f"Colorful console output: {logging_config.use_colors}")
 
     try:
         # Handle validation operation

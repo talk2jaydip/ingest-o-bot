@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from openai import AsyncAzureOpenAI
+from openai import RateLimitError, APITimeoutError, APIConnectionError
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
@@ -69,14 +70,25 @@ TEXT IN IMAGE: [all visible text here, separated by spaces or commas]
 If no text is visible, write "TEXT IN IMAGE: None"
 """
             
-            # Call GPT-4o with vision
+            # Call GPT-4o with vision with retry logic for transient errors
+            def log_retry(retry_state):
+                exception = retry_state.outcome.exception()
+                if isinstance(exception, RateLimitError):
+                    logger.info(
+                        f"Rate limited on GPT-4o (attempt {retry_state.attempt_number}/5), "
+                        f"waiting before retry..."
+                    )
+                else:
+                    logger.info(
+                        f"Transient error on GPT-4o: {type(exception).__name__} "
+                        f"(attempt {retry_state.attempt_number}/5), retrying..."
+                    )
+
             async for attempt in AsyncRetrying(
-                retry=retry_if_exception_type(Exception),
-                wait=wait_random_exponential(min=1, max=20),
-                stop=stop_after_attempt(3),
-                before_sleep=lambda retry_state: logger.info(
-                    "Rate limited on GPT-4o, retrying..."
-                )
+                retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIConnectionError)),
+                wait=wait_random_exponential(min=5, max=60),
+                stop=stop_after_attempt(5),
+                before_sleep=log_retry
             ):
                 with attempt:
                     response = await self.client.chat.completions.create(

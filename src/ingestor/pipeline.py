@@ -83,6 +83,7 @@ class Pipeline:
         self.log_dir = log_dir or Path("./logs")
         self.clean_artifacts = clean_artifacts
         self.validate_only = validate_only
+        self.write_artifacts = config.logging.write_artifacts  # Control artifact log writing
 
         # Initialize components
         self.input_source: Optional[InputSource] = None
@@ -347,19 +348,25 @@ class Pipeline:
             # storage_url and citation URLs REQUIRE blob storage
             if not isinstance(self.artifact_storage, BlobArtifactStorage):
                 logger.warning("=" * 80)
-                logger.warning("⚠️  BLOB STORAGE NOT CONFIGURED")
+                logger.warning("⚠️  LOCAL ARTIFACTS MODE - Azure AI Search requires blob storage")
                 logger.warning("=" * 80)
-                logger.warning("The pipeline requires blob storage for:")
-                logger.warning("  1. storage_url (must be blob URL, not file:// URI)")
-                logger.warning("  2. Citation URLs (per-page PDFs stored in blob)")
+                logger.warning("Why this matters:")
+                logger.warning("  • Azure AI Search requires https:// blob URLs")
+                logger.warning("  • Local artifacts use file:// URIs that won't work in the index")
+                logger.warning("  • Users won't be able to access document citations")
                 logger.warning("")
-                logger.warning("Please configure blob storage by setting:")
-                logger.warning("  - AZURE_STORAGE_ACCOUNT or AZURE_BLOB_ACCOUNT_URL")
-                logger.warning("  - AZURE_STORAGE_ACCOUNT_KEY (or use managed identity)")
-                logger.warning("  - Remove AZURE_ARTIFACTS_DIR if set (forces local mode)")
+                logger.warning("To fix - Choose ONE option:")
+                logger.warning("")
+                logger.warning("  OPTION 1 (Recommended): Use blob input → blob artifacts")
+                logger.warning("    Set: AZURE_INPUT_MODE=blob")
+                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
+                logger.warning("    Result: Artifacts automatically go to blob storage")
+                logger.warning("")
+                logger.warning("  OPTION 2: Keep local input, override to blob artifacts")
+                logger.warning("    Keep: AZURE_INPUT_MODE=local")
+                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
+                logger.warning("    Add: AZURE_STORE_ARTIFACTS_TO_BLOB=true")
                 logger.warning("=" * 80)
-                logger.warning("")
-                logger.warning("Pipeline will fail when processing documents.")
                 logger.warning("")
         
         if self.table_renderer is None:
@@ -1231,10 +1238,11 @@ class Pipeline:
         
         # Log DI response (if available)
         if hasattr(self.di_extractor, 'last_result') and self.di_extractor.last_result:
-            log_di_response(self.log_dir, filename, self.di_extractor.last_result)
-        
+            log_di_response(self.log_dir, filename, self.di_extractor.last_result,
+                          write_artifacts=self.write_artifacts)
+
         # Log DI extraction summary
-        log_di_summary(self.log_dir, filename, pages)
+        log_di_summary(self.log_dir, filename, pages, write_artifacts=self.write_artifacts)
         
         # Process images (describe + upload) in parallel
         image_tasks = []
@@ -1268,12 +1276,13 @@ class Pipeline:
             for idx, table in enumerate(page.tables):
                 # Render table text
                 rendered_text = self.table_renderer.render(table)
-                
+
                 # Log table processing
                 log_table_processing(
-                    self.log_dir, filename, page.page_num, idx, table, rendered_text
+                    self.log_dir, filename, page.page_num, idx, table, rendered_text,
+                    write_artifacts=self.write_artifacts
                 )
-        
+
         # Write page artifacts in parallel
         json_write_tasks = [
             self.artifact_storage.write_page_json(
@@ -1361,7 +1370,8 @@ class Pipeline:
 
                     # Log figure processing
                     log_figure_processing(
-                        self.log_dir, filename, page.page_num, idx, image, image.description
+                        self.log_dir, filename, page.page_num, idx, image, image.description,
+                        write_artifacts=self.write_artifacts
                     )
 
                 # Upload image or construct URL from config
@@ -1388,7 +1398,8 @@ class Pipeline:
 
                 # Log table processing
                 log_table_processing(
-                    self.log_dir, filename, page.page_num, idx, table, rendered_text
+                    self.log_dir, filename, page.page_num, idx, table, rendered_text,
+                    write_artifacts=self.write_artifacts
                 )
 
         # Write page artifacts in parallel
@@ -1453,7 +1464,7 @@ class Pipeline:
         text_chunks: list[TextChunk] = self.chunker.chunk_pages(pages)
         
         # Log chunking process
-        log_chunking_process(self.log_dir, filename, text_chunks)
+        log_chunking_process(self.log_dir, filename, text_chunks, write_artifacts=self.write_artifacts)
         
         # Create chunk documents with metadata
         chunk_docs = []

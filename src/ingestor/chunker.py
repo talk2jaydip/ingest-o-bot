@@ -112,26 +112,44 @@ def remove_duplicated_phrase(text: str) -> str:
 
 def extract_page_header(text: str) -> tuple[str, Optional[str]]:
     """Extract page header from text and return (cleaned_text, header_keyword).
-    
+
     Removes all Document Intelligence metadata patterns:
     - <!-- PageHeader="..." --> - Extract and use as title
     - <!-- PageFooter="..." --> - Remove (not used)
     - <!-- PageNumber="..." --> - Remove (overhead)
+
+    Fallback: If no PageHeader metadata found, extracts titles from markdown headers (# and ##)
     """
     headers = []
-    
+
     for match in PAGE_HEADER_PATTERN.finditer(text):
         raw_header = match.group(1).strip()
         cleaned_header = PAGE_NUMBER_PREFIX_PATTERN.sub('', raw_header).strip()
         cleaned_header = remove_duplicated_phrase(cleaned_header)
         if cleaned_header:
             headers.append(cleaned_header)
-    
+
     # Remove all metadata patterns from text
     cleaned_text = PAGE_HEADER_PATTERN.sub('', text)
     cleaned_text = PAGE_FOOTER_PATTERN.sub('', cleaned_text)
     cleaned_text = PAGE_NUMBER_PATTERN.sub('', cleaned_text)  # Remove PageNumber overhead
-    
+
+    # Fallback: If no PageHeader metadata, extract from markdown headers
+    if not headers:
+        # Look for markdown headers (# Header or ## Header)
+        # Match lines that start with 1-3 # followed by space and text
+        markdown_header_pattern = re.compile(r'^(#{1,3})\s+(.+)$', re.MULTILINE)
+        markdown_matches = markdown_header_pattern.findall(cleaned_text)
+
+        if markdown_matches:
+            # Use the first significant header (prefer ## over # for section titles)
+            # Filter out very short headers (< 10 chars) as they're likely not meaningful titles
+            for level, header_text in markdown_matches:
+                header_text = header_text.strip()
+                if len(header_text) >= 10:  # Meaningful title threshold
+                    headers.append(header_text)
+                    break  # Use first meaningful header as title
+
     # Combine unique headers
     if headers:
         seen = set()
@@ -143,7 +161,7 @@ def extract_page_header(text: str) -> tuple[str, Optional[str]]:
         header_keyword = ' | '.join(unique_headers) if len(unique_headers) > 1 else unique_headers[0]
     else:
         header_keyword = None
-    
+
     return cleaned_text, header_keyword
 
 

@@ -571,18 +571,34 @@ class DocumentIntelligenceExtractor:
         x0, y0, x1, y1 = (round(x * bbox_dpi, 2) for x in bbox_inches)
         bbox_pixels = (x0, y0, x1, y1)
         rect = pymupdf.Rect(bbox_pixels)
-        
+
         page_dpi = 300
         page = doc.load_page(page_number)
+
+        # Get page boundaries and clip the rect to ensure it doesn't extend outside
+        page_rect = page.rect
+        clipped_rect = rect & page_rect  # Intersection of rect and page_rect
+
+        # If the intersection is empty, log a warning and use a minimal valid rect
+        if clipped_rect.is_empty or clipped_rect.is_infinite:
+            logger.warning(
+                f"Figure bbox {bbox_pixels} is outside page {page_number} bounds {tuple(page_rect)}. "
+                f"Using page center as fallback."
+            )
+            # Use a small rect at page center as fallback
+            center_x = (page_rect.x0 + page_rect.x1) / 2
+            center_y = (page_rect.y0 + page_rect.y1) / 2
+            clipped_rect = pymupdf.Rect(center_x - 50, center_y - 50, center_x + 50, center_y + 50)
+
         pix = page.get_pixmap(
             matrix=pymupdf.Matrix(page_dpi / bbox_dpi, page_dpi / bbox_dpi),
-            clip=rect
+            clip=clipped_rect
         )
-        
+
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
         bytes_io = io.BytesIO()
         img.save(bytes_io, format="PNG")
-        return bytes_io.getvalue(), bbox_pixels
+        return bytes_io.getvalue(), tuple(clipped_rect)
     
     def _build_page_text(
         self,
