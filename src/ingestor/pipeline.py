@@ -369,7 +369,8 @@ class Pipeline:
             # Pass table_renderer to extractor for in-place table rendering
             self.di_extractor = DocumentIntelligenceExtractor(
                 self.config.document_intelligence,
-                table_renderer=self.table_renderer
+                table_renderer=self.table_renderer,
+                max_figure_concurrency=self.config.performance.max_figure_concurrency
             )
 
         if self.office_extractor is None:
@@ -410,7 +411,10 @@ class Pipeline:
             self.embeddings_gen = create_embeddings_generator(self.config.azure_openai)
         
         if self.search_uploader is None:
-            self.search_uploader = create_search_uploader(self.config.search)
+            self.search_uploader = create_search_uploader(
+                self.config.search,
+                max_batch_concurrency=self.config.performance.max_batch_upload_concurrency
+            )
 
         # Initialize page splitter for per-page PDF citations (ALWAYS for PDFs)
         # Per-page PDFs are stored in blob storage for citation URLs
@@ -554,6 +558,58 @@ class Pipeline:
 
         return pipeline_status
 
+    async def _process_image(
+        self,
+        page_num: int,
+        idx: int,
+        image: ExtractedImage,
+        filename: str
+    ) -> tuple[int, int, ExtractedImage]:
+        """Process a single image: describe and upload.
+
+        Args:
+            page_num: Page number (0-indexed)
+            idx: Image index on the page
+            image: ExtractedImage object to process
+            filename: Document filename
+
+        Returns:
+            Tuple of (page_num, idx, processed_image) for logging
+        """
+        try:
+            # Describe image
+            if self.media_describer:
+                logger.info(f"Generating description for figure {image.figure_id} on page {page_num + 1}")
+                image.description = await self.media_describer.describe_image(image.image_bytes)
+
+                # Log figure processing
+                log_figure_processing(
+                    self.log_dir, filename, page_num, idx, image, image.description
+                )
+
+            # Upload image or construct URL from config
+            if isinstance(self.artifact_storage, BlobArtifactStorage):
+                # Actually upload to blob storage
+                image.url = await self.artifact_storage.write_image(
+                    filename,
+                    image.page_num,
+                    image.filename,
+                    image.image_bytes,
+                    figure_idx=idx  # Pass figure index on page to prevent naming collisions
+                )
+            else:
+                # Construct URL from config without uploading
+                image.url = self._construct_image_url_from_config(filename, image.page_num, idx)
+                if not image.url:
+                    logger.warning(f"Could not construct image URL for {filename} page {image.page_num} figure {idx}")
+
+            return (page_num, idx, image)
+
+        except Exception as e:
+            logger.error(f"Failed to process image {image.figure_id} on page {page_num + 1}: {e}")
+            # Return the image with error logged, don't fail entire document
+            return (page_num, idx, image)
+
     async def _process_single_document(
         self,
         filename: str,
@@ -569,22 +625,42 @@ class Pipeline:
         start_time = time.time()
 
         try:
-            # Step 0a: Delete existing document chunks from index first
-            logger.info(f"Checking for existing chunks of {filename}")
-            deleted_count = await self.search_uploader.delete_documents_by_filename(filename)
-            if deleted_count > 0:
-                logger.info(f"Deleted {deleted_count} existing chunks for {filename}")
-            else:
-                logger.info(f"No existing chunks found for {filename}")
+            # Step 0: Delete existing chunks and artifacts in parallel
+            logger.info(f"Checking for existing chunks and artifacts of {filename}")
 
-            # Step 0b: Delete existing blob artifacts (if using blob storage and clean_artifacts enabled)
+            # Collect deletion tasks
+            delete_tasks = []
+            delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
+
             if self.clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
-                logger.info(f"Cleaning old blob artifacts for {filename}")
-                artifacts_deleted = await self.artifact_storage.delete_document_artifacts(filename)
-                if artifacts_deleted > 0:
-                    logger.info(f"Deleted {artifacts_deleted} old artifact blobs for {filename}")
+                delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
+
+            # Execute deletions in parallel
+            results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+
+            # Process results
+            deleted_count = 0
+            artifacts_deleted = 0
+
+            if len(results) > 0:
+                if isinstance(results[0], Exception):
+                    logger.error(f"Failed to delete chunks: {results[0]}")
                 else:
-                    logger.info(f"No old artifacts found for {filename}")
+                    deleted_count = results[0]
+                    if deleted_count > 0:
+                        logger.info(f"Deleted {deleted_count} existing chunks for {filename}")
+                    else:
+                        logger.info(f"No existing chunks found for {filename}")
+
+            if len(results) > 1:
+                if isinstance(results[1], Exception):
+                    logger.error(f"Failed to delete artifacts: {results[1]}")
+                else:
+                    artifacts_deleted = results[1]
+                    if artifacts_deleted > 0:
+                        logger.info(f"Deleted {artifacts_deleted} old artifact blobs for {filename}")
+                    else:
+                        logger.info(f"No old artifacts found for {filename}")
 
             # Check file type and process accordingly
             file_ext = Path(filename).suffix.lower()
@@ -777,17 +853,35 @@ class Pipeline:
             files_found += 1
             logger.info(f"Removing document: {filename}")
             try:
-                # Use full filename (with extension) for matching
-                count = await self.search_uploader.delete_documents_by_filename(filename)
-                total_removed += count
-                logger.info(f"Removed {count} chunks for {filename}")
+                # Delete chunks and artifacts in parallel
+                delete_tasks = []
+                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
-                # Clean artifacts if requested
                 if clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
-                    logger.info(f"Cleaning artifacts for {filename}")
-                    deleted = await self.artifact_storage.delete_document_artifacts(filename)
-                    total_artifacts_deleted += deleted
-                    logger.info(f"Deleted {deleted} artifact blobs")
+                    delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
+
+                # Execute deletions in parallel
+                results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+
+                # Process results
+                count = 0
+                deleted = 0
+
+                if len(results) > 0:
+                    if isinstance(results[0], Exception):
+                        logger.error(f"Failed to delete chunks: {results[0]}")
+                    else:
+                        count = results[0]
+                        total_removed += count
+                        logger.info(f"Removed {count} chunks for {filename}")
+
+                if len(results) > 1:
+                    if isinstance(results[1], Exception):
+                        logger.error(f"Failed to delete artifacts: {results[1]}")
+                    else:
+                        deleted = results[1]
+                        total_artifacts_deleted += deleted
+                        logger.info(f"Deleted {deleted} artifact blobs")
 
             except Exception as e:
                 logger.error(f"Error removing {filename}: {e}", exc_info=True)
@@ -985,6 +1079,26 @@ class Pipeline:
                         "Set AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_CONTAINER or blob container settings."
                     )
 
+    async def _upload_page_pdf(
+        self,
+        filename: str,
+        page_num: int,
+        pdf_bytes: bytes
+    ) -> tuple[int, str]:
+        """Upload a single page PDF to blob storage.
+
+        Args:
+            filename: Document filename
+            page_num: Page number (0-indexed)
+            pdf_bytes: PDF bytes for the single page
+
+        Returns:
+            Tuple of (page_num, url) for caching
+        """
+        url = await self.artifact_storage.write_page_pdf(filename, page_num, pdf_bytes)
+        logger.debug(f"Uploaded page PDF {page_num + 1}: {url}")
+        return page_num, url
+
     async def split_and_store_page_pdfs(self, filename: str, pdf_bytes: bytes):
         """Split PDF into per-page PDFs and store in blob storage for citations.
 
@@ -1004,17 +1118,26 @@ class Pipeline:
             page_pdfs = self.page_splitter.split_pdf(pdf_bytes, filename)
 
             if isinstance(self.artifact_storage, BlobArtifactStorage):
-                # Blob storage configured - actually upload page PDFs
-                logger.info(f"Uploading {len(page_pdfs)} per-page PDFs to blob storage for citations")
-                for page_num, page_pdf_bytes, page_filename in page_pdfs:
-                    page_pdf_url = await self.artifact_storage.write_page_pdf(
-                        filename,
-                        page_num,
-                        page_pdf_bytes
-                    )
-                    # Cache URL for later use in chunking (these are blob URLs)
-                    self.page_pdf_urls[(filename, page_num)] = page_pdf_url
-                    logger.debug(f"Uploaded page PDF {page_num + 1}: {page_pdf_url}")
+                # Blob storage configured - actually upload page PDFs in parallel
+                logger.info(f"Uploading {len(page_pdfs)} per-page PDFs to blob storage for citations (parallel)")
+
+                # Collect all upload tasks
+                upload_tasks = [
+                    self._upload_page_pdf(filename, page_num, pdf_bytes)
+                    for page_num, pdf_bytes, _ in page_pdfs
+                ]
+
+                # Execute all uploads in parallel
+                results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+                # Cache results and handle errors
+                for result in results:
+                    if isinstance(result, Exception):
+                        logger.error(f"Failed to upload page PDF: {result}")
+                    else:
+                        page_num, url = result
+                        # Cache URL for later use in chunking (these are blob URLs)
+                        self.page_pdf_urls[(filename, page_num)] = url
 
                 logger.info(f"✓ Successfully uploaded {len(page_pdfs)} page PDFs to blob storage")
             else:
@@ -1113,34 +1236,32 @@ class Pipeline:
         # Log DI extraction summary
         log_di_summary(self.log_dir, filename, pages)
         
-        # Process images (describe + upload)
+        # Process images (describe + upload) in parallel
+        image_tasks = []
         for page in pages:
-            for idx, image in enumerate[ExtractedImage](page.images):
-                # Describe image
-                if self.media_describer:
-                    logger.info(f"Generating description for figure {image.figure_id} on page {page.page_num + 1}")
-                    image.description = await self.media_describer.describe_image(image.image_bytes)
-                    
-                    # Log figure processing
-                    log_figure_processing(
-                        self.log_dir, filename, page.page_num, idx, image, image.description
-                    )
-                
-                # Upload image or construct URL from config
-                if isinstance(self.artifact_storage, BlobArtifactStorage):
-                    # Actually upload to blob storage
-                    image.url = await self.artifact_storage.write_image(
-                        filename,
-                        image.page_num,
-                        image.filename,
-                        image.image_bytes,
-                        figure_idx=idx  # Pass figure index on page to prevent naming collisions
-                    )
-                else:
-                    # Construct URL from config without uploading
-                    image.url = self._construct_image_url_from_config(filename, image.page_num, idx)
-                    if not image.url:
-                        logger.warning(f"Could not construct image URL for {filename} page {image.page_num} figure {idx}")
+            for idx, image in enumerate(page.images):
+                image_tasks.append(self._process_image(page.page_num, idx, image, filename))
+
+        if image_tasks:
+            logger.info(f"Processing {len(image_tasks)} images in parallel (max concurrency: {self.config.performance.max_image_concurrency})")
+
+            # Create semaphore to limit concurrent image operations
+            max_image_concurrency = self.config.performance.max_image_concurrency
+            image_semaphore = asyncio.Semaphore(max_image_concurrency)
+
+            async def process_with_semaphore(task):
+                async with image_semaphore:
+                    return await task
+
+            # Process all images in parallel with controlled concurrency
+            processed_images = await asyncio.gather(*[
+                process_with_semaphore(task) for task in image_tasks
+            ], return_exceptions=True)
+
+            # Handle exceptions and log errors
+            for i, result in enumerate(processed_images):
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to process image {i}: {result}")
         
         # Process and log tables
         for page in pages:
@@ -1153,34 +1274,41 @@ class Pipeline:
                     self.log_dir, filename, page.page_num, idx, table, rendered_text
                 )
         
-        # Write page artifacts
-        for page in pages:
-            page_data = {
-                "page_num": page.page_num,
-                "text": page.text,
-                "tables": [
-                    {
-                        "table_id": t.table_id,
-                        "page_nums": t.page_nums,
-                        "row_count": t.row_count,
-                        "column_count": t.column_count,
-                        "cells": t.cells
-                    }
-                    for t in page.tables
-                ],
-                "images": [
-                    {
-                        "figure_id": img.figure_id,
-                        "page_num": img.page_num,
-                        "filename": img.filename,
-                        "url": img.url,
-                        "description": img.description
-                    }
-                    for img in page.images
-                ]
-            }
-            
-            await self.artifact_storage.write_page_json(filename, page.page_num, page_data)
+        # Write page artifacts in parallel
+        json_write_tasks = [
+            self.artifact_storage.write_page_json(
+                filename,
+                page.page_num,
+                {
+                    "page_num": page.page_num,
+                    "text": page.text,
+                    "tables": [
+                        {
+                            "table_id": t.table_id,
+                            "page_nums": t.page_nums,
+                            "row_count": t.row_count,
+                            "column_count": t.column_count,
+                            "cells": t.cells
+                        }
+                        for t in page.tables
+                    ],
+                    "images": [
+                        {
+                            "figure_id": img.figure_id,
+                            "page_num": img.page_num,
+                            "filename": img.filename,
+                            "url": img.url,
+                            "description": img.description
+                        }
+                        for img in page.images
+                    ]
+                }
+            )
+            for page in pages
+        ]
+
+        # Execute all writes in parallel
+        await asyncio.gather(*json_write_tasks, return_exceptions=True)
         
         # Write manifest
         manifest = {
@@ -1263,34 +1391,41 @@ class Pipeline:
                     self.log_dir, filename, page.page_num, idx, table, rendered_text
                 )
 
-        # Write page artifacts
-        for page in pages:
-            page_data = {
-                "page_num": page.page_num,
-                "text": page.text,
-                "tables": [
-                    {
-                        "table_id": t.table_id,
-                        "page_nums": t.page_nums,
-                        "row_count": t.row_count,
-                        "column_count": t.column_count,
-                        "cells": t.cells
-                    }
-                    for t in page.tables
-                ],
-                "images": [
-                    {
-                        "figure_id": img.figure_id,
-                        "page_num": img.page_num,
-                        "filename": img.filename,
-                        "url": img.url,
-                        "description": img.description
-                    }
-                    for img in page.images
-                ]
-            }
+        # Write page artifacts in parallel
+        json_write_tasks = [
+            self.artifact_storage.write_page_json(
+                filename,
+                page.page_num,
+                {
+                    "page_num": page.page_num,
+                    "text": page.text,
+                    "tables": [
+                        {
+                            "table_id": t.table_id,
+                            "page_nums": t.page_nums,
+                            "row_count": t.row_count,
+                            "column_count": t.column_count,
+                            "cells": t.cells
+                        }
+                        for t in page.tables
+                    ],
+                    "images": [
+                        {
+                            "figure_id": img.figure_id,
+                            "page_num": img.page_num,
+                            "filename": img.filename,
+                            "url": img.url,
+                            "description": img.description
+                        }
+                        for img in page.images
+                    ]
+                }
+            )
+            for page in pages
+        ]
 
-            await self.artifact_storage.write_page_json(filename, page.page_num, page_data)
+        # Execute all writes in parallel
+        await asyncio.gather(*json_write_tasks, return_exceptions=True)
 
         # Write manifest
         manifest = {
@@ -1499,4 +1634,6 @@ class Pipeline:
             await self.media_describer.close()
         if self.artifact_storage and hasattr(self.artifact_storage, 'close'):
             await self.artifact_storage.close()
+        if self.di_extractor and hasattr(self.di_extractor, 'close'):
+            await self.di_extractor.close()
 

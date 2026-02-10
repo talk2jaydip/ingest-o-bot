@@ -15,6 +15,7 @@ from azure.ai.documentintelligence.models import (
 )
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import ServiceRequestError, HttpResponseError
+from azure.identity.aio import DefaultAzureCredential
 from PIL import Image
 from tenacity import (
     AsyncRetrying,
@@ -109,17 +110,51 @@ class ExtractedPage:
 class DocumentIntelligenceExtractor:
     """Extracts content from PDFs using Azure Document Intelligence."""
     
-    def __init__(self, config: DocumentIntelligenceConfig, table_renderer=None):
+    def __init__(self, config: DocumentIntelligenceConfig, table_renderer=None, max_figure_concurrency: int = 5):
         self.config = config
         self.table_renderer = table_renderer  # Optional: for rendering tables in extractor
+        self.max_figure_concurrency = max_figure_concurrency
         self._semaphore: Optional[asyncio.Semaphore] = None
+        self._di_client: Optional[DocumentIntelligenceClient] = None
+        self._credential = None
     
     def _get_semaphore(self) -> asyncio.Semaphore:
         """Get or create semaphore for concurrency control."""
         if self._semaphore is None:
             self._semaphore = asyncio.Semaphore(self.config.max_concurrency)
         return self._semaphore
-    
+
+    def _get_di_client(self) -> DocumentIntelligenceClient:
+        """Get or create persistent Document Intelligence client."""
+        if self._di_client is None:
+            # Create credential once
+            if self._credential is None:
+                if hasattr(self.config, 'use_managed_identity') and self.config.use_managed_identity:
+                    self._credential = DefaultAzureCredential()
+                else:
+                    self._credential = AzureKeyCredential(self.config.key) if self.config.key else None
+
+            # Create persistent client
+            self._di_client = DocumentIntelligenceClient(
+                endpoint=self.config.endpoint,
+                credential=self._credential
+            )
+            logger.info("Created persistent DocumentIntelligenceClient")
+
+        return self._di_client
+
+    async def close(self):
+        """Close Document Intelligence client and release resources."""
+        if self._di_client:
+            await self._di_client.close()
+            self._di_client = None
+            logger.info("Closed DocumentIntelligenceClient")
+
+        # Close managed identity credential if it exists
+        if self._credential and hasattr(self._credential, 'close'):
+            await self._credential.close()
+            self._credential = None
+
     def _before_retry_sleep(self, retry_state):
         """Log retry attempts."""
         logger.info(
@@ -141,44 +176,41 @@ class DocumentIntelligenceExtractor:
         
         async with semaphore:
             logger.info(f"Extracting content from {filename} using Azure Document Intelligence")
-            
-            credential = AzureKeyCredential(self.config.key) if self.config.key else None
-            
-            async with DocumentIntelligenceClient(
-                endpoint=self.config.endpoint,
-                credential=credential
-            ) as di_client:
-                analyze_result: Optional[AnalyzeResult] = None
-                
-                # Start analysis with retry logic
-                async for attempt in AsyncRetrying(
-                    retry=retry_if_exception_type((ServiceRequestError, HttpResponseError)),
-                    wait=wait_random_exponential(min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
-                    stop=stop_after_attempt(DEFAULT_MAX_RETRIES),
-                    before_sleep=self._before_retry_sleep
-                ):
-                    with attempt:
-                        if process_figures:
-                            try:
-                                poller = await di_client.begin_analyze_document(
-                                    model_id="prebuilt-layout",
-                                    body=AnalyzeDocumentRequest(bytes_source=pdf_bytes),
-                                    output=["figures"],
-                                    features=["ocrHighResolution"],
-                                    output_content_format="markdown"
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to analyze with figures: {e}. Retrying without figures.")
-                                process_figures = False
-                                raise  # Trigger retry
-                        
-                        if not process_figures:
+
+            # Use persistent client
+            di_client = self._get_di_client()
+
+            analyze_result: Optional[AnalyzeResult] = None
+
+            # Start analysis with retry logic
+            async for attempt in AsyncRetrying(
+                retry=retry_if_exception_type((ServiceRequestError, HttpResponseError)),
+                wait=wait_random_exponential(min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+                stop=stop_after_attempt(DEFAULT_MAX_RETRIES),
+                before_sleep=self._before_retry_sleep
+            ):
+                with attempt:
+                    if process_figures:
+                        try:
                             poller = await di_client.begin_analyze_document(
                                 model_id="prebuilt-layout",
-                                body=AnalyzeDocumentRequest(bytes_source=pdf_bytes)
+                                body=AnalyzeDocumentRequest(bytes_source=pdf_bytes),
+                                output=["figures"],
+                                features=["ocrHighResolution"],
+                                output_content_format="markdown"
                             )
-                        
-                        analyze_result = await poller.result()
+                        except Exception as e:
+                            logger.warning(f"Failed to analyze with figures: {e}. Retrying without figures.")
+                            process_figures = False
+                            raise  # Trigger retry
+
+                    if not process_figures:
+                        poller = await di_client.begin_analyze_document(
+                            model_id="prebuilt-layout",
+                            body=AnalyzeDocumentRequest(bytes_source=pdf_bytes)
+                        )
+
+                    analyze_result = await poller.result()
             
             # Parse results
             pages = await self._parse_analyze_result(
@@ -214,15 +246,34 @@ class DocumentIntelligenceExtractor:
             # Apply header carry-forward for multi-page table continuations
             all_tables = self._apply_header_carryforward(all_tables)
         
-        # Extract figures
+        # Extract figures in parallel
         all_figures = []
         if result.figures and doc_for_pymupdf:
-            for figure_idx, figure in enumerate(result.figures):
-                try:
-                    extracted_image = await self._extract_figure(figure, figure_idx, doc_for_pymupdf)
-                    all_figures.append(extracted_image)
-                except Exception as e:
-                    logger.error(f"Error extracting figure {figure_idx}: {e}")
+            # Collect all figure extraction tasks
+            figure_tasks = [
+                self._extract_figure(figure, idx, doc_for_pymupdf)
+                for idx, figure in enumerate(result.figures)
+            ]
+
+            # Extract all figures in parallel with controlled concurrency
+            if figure_tasks:
+                logger.info(f"Extracting {len(figure_tasks)} figures in parallel (max concurrency: {self.max_figure_concurrency})")
+                figure_semaphore = asyncio.Semaphore(self.max_figure_concurrency)
+
+                async def extract_with_semaphore(task):
+                    async with figure_semaphore:
+                        return await task
+
+                extracted_figures = await asyncio.gather(*[
+                    extract_with_semaphore(task) for task in figure_tasks
+                ], return_exceptions=True)
+
+                # Filter out exceptions and collect successfully extracted figures
+                for idx, result_item in enumerate(extracted_figures):
+                    if isinstance(result_item, Exception):
+                        logger.error(f"Error extracting figure {idx}: {result_item}")
+                    else:
+                        all_figures.append(result_item)
         
         # Process each page
         offset = 0
