@@ -561,7 +561,12 @@ class PerformanceConfig:
     upload_delay: float = 0.5
     embed_batch_size: int = 128
     upload_batch_size: int = 1000
-    
+
+    # Parallelization settings for I/O operations
+    max_image_concurrency: int = 8      # Parallel image descriptions/uploads
+    max_figure_concurrency: int = 5     # Parallel figure extractions
+    max_batch_upload_concurrency: int = 5  # Parallel search batch uploads
+
     @classmethod
     def from_env(cls) -> "PerformanceConfig":
         """Load from environment variables."""
@@ -570,13 +575,21 @@ class PerformanceConfig:
         upload_delay = float(os.getenv("AZURE_UPLOAD_DELAY", "0.5"))
         embed_batch_size = int(os.getenv("AZURE_EMBED_BATCH_SIZE", "128"))
         upload_batch_size = int(os.getenv("AZURE_UPLOAD_BATCH_SIZE", "1000"))
-        
+
+        # Parallelization settings
+        max_image_concurrency = int(os.getenv("AZURE_MAX_IMAGE_CONCURRENCY", "8"))
+        max_figure_concurrency = int(os.getenv("AZURE_MAX_FIGURE_CONCURRENCY", "5"))
+        max_batch_upload_concurrency = int(os.getenv("AZURE_MAX_BATCH_UPLOAD_CONCURRENCY", "5"))
+
         return cls(
             max_workers=max_workers,
             inner_analyze_workers=inner_analyze_workers,
             upload_delay=upload_delay,
             embed_batch_size=embed_batch_size,
-            upload_batch_size=upload_batch_size
+            upload_batch_size=upload_batch_size,
+            max_image_concurrency=max_image_concurrency,
+            max_figure_concurrency=max_figure_concurrency,
+            max_batch_upload_concurrency=max_batch_upload_concurrency
         )
 
 
