@@ -35,10 +35,11 @@ Located in `docs/guides/`:
 | 4 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
 | 5 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
 | 6 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
-| 7 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
-| 8 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
-| 9 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
-| 10 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
+| 7 | [Artifact Storage Simplified](guides/ARTIFACT_STORAGE_SIMPLIFIED.md) | Simplified artifact storage configuration guide |
+| 8 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
+| 9 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
+| 10 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
+| 11 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
 
 ---
 
@@ -122,13 +123,14 @@ docs/
 ├── INDEX.md                       # This file - main documentation index
 ├── LOGGING_GUIDE.md              # Centralized logging system guide
 │
-├── guides/                        # User-facing guides (9 guides)
+├── guides/                        # User-facing guides (10 guides)
 │   ├── QUICKSTART.md             # Get started in 5 minutes
 │   ├── QUICK_REFERENCE.md        # Fast lookup guide
 │   ├── VALIDATION.md             # Configuration validation guide
 │   ├── LIBRARY_USAGE.md          # Using as a Python library
 │   ├── CONFIGURATION.md          # Complete configuration reference
 │   ├── ENVIRONMENT_AND_SECRETS.md # Managing environments
+│   ├── ARTIFACT_STORAGE_SIMPLIFIED.md # Artifact storage configuration
 │   ├── BATCH_PROCESSING.md       # Batch processing and parallel execution
 │   ├── PERFORMANCE_TUNING.md     # Performance optimization guide
 │   └── INDEX_DEPLOYMENT_GUIDE.md # Index deployment guide
