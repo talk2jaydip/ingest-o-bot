@@ -287,19 +287,6 @@ print(f"Indexed {status.total_chunks_indexed} chunks")
 
 ---
 
-## 🔀 Migrating from prepdocslib-minimal
-
-See the [Migration Guide](MIGRATION.md) for upgrading from `prepdocslib-minimal` to `ingestor`.
-
-**Quick migration:**
-```bash
-pip uninstall prepdocslib-minimal
-pip install ingestor
-# Update imports: from prepdocslib_minimal → from ingestor
-```
-
----
-
 ## 📄 License
 
 This project is licensed under the MIT License.
