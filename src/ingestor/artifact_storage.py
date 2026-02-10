@@ -317,7 +317,7 @@ class LocalArtifactStorage(ArtifactStorage):
 
 class BlobArtifactStorage(ArtifactStorage):
     """Azure Blob Storage artifact storage."""
-    
+
     def __init__(
         self,
         account_url: str,
@@ -333,6 +333,7 @@ class BlobArtifactStorage(ArtifactStorage):
         self.images_container = images_container or chunks_container
         self.citations_container = citations_container or pages_container  # Use separate container if provided, else use pages
         self.credential = credential
+        self._blob_service_client: Optional[BlobServiceClient] = None
     
     def _sanitize_doc_name(self, doc_name: str) -> str:
         """Sanitize document name for blob storage.
@@ -342,44 +343,59 @@ class BlobArtifactStorage(ArtifactStorage):
         from pathlib import Path as PathLib
         base_name = PathLib(doc_name).stem  # Get filename without extension
         return base_name.replace('\\', '/').strip('/')
-    
+
+    async def _get_blob_service_client(self) -> BlobServiceClient:
+        """Get or create persistent blob service client.
+
+        Returns the same client instance for all operations to enable connection pooling.
+        """
+        if self._blob_service_client is None:
+            self._blob_service_client = BlobServiceClient(
+                account_url=self.account_url,
+                credential=self.credential
+            )
+        return self._blob_service_client
+
+    async def close(self):
+        """Close the blob service client and release resources."""
+        if self._blob_service_client:
+            await self._blob_service_client.close()
+            self._blob_service_client = None
+
     async def ensure_containers_exist(self):
         """Efficiently ensure all required containers exist.
-        
+
         Checks if containers exist first, then creates only if needed.
         This should be called once during initialization.
         """
         containers_to_create = set()
-        
+
         # Collect unique containers
         containers_to_create.add(self.pages_container)
         containers_to_create.add(self.chunks_container)
         containers_to_create.add(self.images_container)
         if self.citations_container:
             containers_to_create.add(self.citations_container)
-        
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            for container_name in containers_to_create:
-                container_client = blob_service_client.get_container_client(container_name)
-                
-                # Check if container exists first
+
+        blob_service_client = await self._get_blob_service_client()
+        for container_name in containers_to_create:
+            container_client = blob_service_client.get_container_client(container_name)
+
+            # Check if container exists first
+            try:
+                await container_client.get_container_properties()
+                logger.debug(f"Container '{container_name}' already exists")
+            except Exception:
+                # Container doesn't exist, create it
                 try:
-                    await container_client.get_container_properties()
-                    logger.debug(f"Container '{container_name}' already exists")
-                except Exception:
-                    # Container doesn't exist, create it
-                    try:
-                        await container_client.create_container()
-                        logger.info(f"Created container: {container_name}")
-                    except ResourceExistsError:
-                        # Container was created between check and create (race condition)
-                        logger.debug(f"Container '{container_name}' was created by another process")
-                    except Exception as e:
-                        logger.error(f"Failed to create container '{container_name}': {e}")
-                        raise
+                    await container_client.create_container()
+                    logger.info(f"Created container: {container_name}")
+                except ResourceExistsError:
+                    # Container was created between check and create (race condition)
+                    logger.debug(f"Container '{container_name}' was created by another process")
+                except Exception as e:
+                    logger.error(f"Failed to create container '{container_name}': {e}")
+                    raise
     
     async def write_page_json(self, doc_name: str, page_num: int, data: dict) -> str:
         """Write page JSON to blob storage.
@@ -394,16 +410,13 @@ class BlobArtifactStorage(ArtifactStorage):
         page_num_1based = page_num + 1
         blob_name = f"{safe_name}/page-{page_num_1based:04d}.json"
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            container_client = blob_service_client.get_container_client(self.pages_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
-            await blob_client.upload_blob(json_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        container_client = blob_service_client.get_container_client(self.pages_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
+        await blob_client.upload_blob(json_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
     
     async def write_page_pdf(self, doc_name: str, page_num: int, pdf_bytes: bytes) -> str:
         """Write per-page PDF to blob storage (pages container).
@@ -418,15 +431,12 @@ class BlobArtifactStorage(ArtifactStorage):
         page_num_1based = page_num + 1
         blob_name = f"{safe_name}_page_{page_num_1based:04d}.pdf"
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            container_client = blob_service_client.get_container_client(self.pages_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            await blob_client.upload_blob(pdf_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        container_client = blob_service_client.get_container_client(self.pages_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        await blob_client.upload_blob(pdf_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
 
     async def write_full_document(self, doc_name: str, pdf_bytes: bytes) -> str:
         """Write full original document to blob storage (PDF, DOCX, PPTX, etc.).
@@ -451,15 +461,12 @@ class BlobArtifactStorage(ArtifactStorage):
         else:
             blob_name = safe_name
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            container_client = blob_service_client.get_container_client(self.citations_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            await blob_client.upload_blob(pdf_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        container_client = blob_service_client.get_container_client(self.citations_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        await blob_client.upload_blob(pdf_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
 
     async def write_chunk_json(self, doc_name: str, page_num: int, chunk_idx: int, data: dict) -> str:
         """Write chunk JSON to blob storage.
@@ -474,16 +481,13 @@ class BlobArtifactStorage(ArtifactStorage):
         page_num_1based = page_num + 1
         blob_name = f"{safe_name}/page-{page_num_1based:04d}/chunk-{chunk_idx:06d}.json"
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            container_client = blob_service_client.get_container_client(self.chunks_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
-            await blob_client.upload_blob(json_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        container_client = blob_service_client.get_container_client(self.chunks_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
+        await blob_client.upload_blob(json_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
     
     async def write_image(self, doc_name: str, page_num: int, image_name: str, image_bytes: bytes, figure_idx: int = 0) -> str:
         """Write image to blob storage with citation burned in.
@@ -512,15 +516,12 @@ class BlobArtifactStorage(ArtifactStorage):
         # Add citation to image (matches original prepdocslib behavior)
         image_bytes = add_image_citation(image_bytes, doc_name, image_name, page_num)
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            container_client = blob_service_client.get_container_client(self.images_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            await blob_client.upload_blob(image_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        container_client = blob_service_client.get_container_client(self.images_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        await blob_client.upload_blob(image_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
 
     async def delete_document_artifacts(self, doc_name: str) -> int:
         """Delete all artifacts for a specific document from blob storage.
@@ -534,46 +535,43 @@ class BlobArtifactStorage(ArtifactStorage):
         safe_name = self._sanitize_doc_name(doc_name)
         deleted_count = 0
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            # Delete from all containers
-            containers = [
-                self.pages_container,
-                self.chunks_container,
-                self.images_container,
-            ]
-            if self.citations_container:
-                containers.append(self.citations_container)
+        blob_service_client = await self._get_blob_service_client()
+        # Delete from all containers
+        containers = [
+            self.pages_container,
+            self.chunks_container,
+            self.images_container,
+        ]
+        if self.citations_container:
+            containers.append(self.citations_container)
 
-            for container_name in containers:
-                try:
-                    container_client = blob_service_client.get_container_client(container_name)
+        for container_name in containers:
+            try:
+                container_client = blob_service_client.get_container_client(container_name)
 
-                    # Delete all blobs with the document prefix (pages/, figures/, chunks/, etc.)
-                    async for blob in container_client.list_blobs(name_starts_with=f"{safe_name}/"):
-                        try:
-                            await container_client.delete_blob(blob.name)
-                            deleted_count += 1
-                            logger.debug(f"Deleted blob: {container_name}/{blob.name}")
-                        except Exception as e:
-                            logger.warning(f"Failed to delete blob {blob.name}: {e}")
+                # Delete all blobs with the document prefix (pages/, figures/, chunks/, etc.)
+                async for blob in container_client.list_blobs(name_starts_with=f"{safe_name}/"):
+                    try:
+                        await container_client.delete_blob(blob.name)
+                        deleted_count += 1
+                        logger.debug(f"Deleted blob: {container_name}/{blob.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete blob {blob.name}: {e}")
 
-                    # Also delete root-level full document PDF if in citations container
-                    if container_name == self.citations_container:
-                        try:
-                            root_pdf_name = f"{safe_name}.pdf"
-                            await container_client.delete_blob(root_pdf_name)
-                            deleted_count += 1
-                            logger.debug(f"Deleted full document: {container_name}/{root_pdf_name}")
-                        except Exception as e:
-                            # Blob might not exist (no full document was uploaded)
-                            logger.debug(f"No full document PDF found: {root_pdf_name}")
+                # Also delete root-level full document PDF if in citations container
+                if container_name == self.citations_container:
+                    try:
+                        root_pdf_name = f"{safe_name}.pdf"
+                        await container_client.delete_blob(root_pdf_name)
+                        deleted_count += 1
+                        logger.debug(f"Deleted full document: {container_name}/{root_pdf_name}")
+                    except Exception as e:
+                        # Blob might not exist (no full document was uploaded)
+                        logger.debug(f"No full document PDF found: {root_pdf_name}")
 
-                    logger.info(f"Cleaned artifacts from container: {container_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean container '{container_name}': {e}")
+                logger.info(f"Cleaned artifacts from container: {container_name}")
+            except Exception as e:
+                logger.warning(f"Failed to clean container '{container_name}': {e}")
 
         return deleted_count
 
@@ -585,35 +583,32 @@ class BlobArtifactStorage(ArtifactStorage):
         """
         deleted_count = 0
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            # Delete from all containers
-            containers = [
-                self.pages_container,
-                self.chunks_container,
-                self.images_container,
-            ]
-            if self.citations_container:
-                containers.append(self.citations_container)
+        blob_service_client = await self._get_blob_service_client()
+        # Delete from all containers
+        containers = [
+            self.pages_container,
+            self.chunks_container,
+            self.images_container,
+        ]
+        if self.citations_container:
+            containers.append(self.citations_container)
 
-            for container_name in containers:
-                try:
-                    container_client = blob_service_client.get_container_client(container_name)
+        for container_name in containers:
+            try:
+                container_client = blob_service_client.get_container_client(container_name)
 
-                    # List and delete all blobs
-                    async for blob in container_client.list_blobs():
-                        try:
-                            await container_client.delete_blob(blob.name)
-                            deleted_count += 1
-                            logger.debug(f"Deleted blob: {container_name}/{blob.name}")
-                        except Exception as e:
-                            logger.warning(f"Failed to delete blob {blob.name}: {e}")
+                # List and delete all blobs
+                async for blob in container_client.list_blobs():
+                    try:
+                        await container_client.delete_blob(blob.name)
+                        deleted_count += 1
+                        logger.debug(f"Deleted blob: {container_name}/{blob.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete blob {blob.name}: {e}")
 
-                    logger.info(f"Cleaned all artifacts from container: {container_name}")
-                except Exception as e:
-                    logger.error(f"Failed to clean container '{container_name}': {e}")
+                logger.info(f"Cleaned all artifacts from container: {container_name}")
+            except Exception as e:
+                logger.error(f"Failed to clean container '{container_name}': {e}")
 
         return deleted_count
 
@@ -622,34 +617,28 @@ class BlobArtifactStorage(ArtifactStorage):
         safe_name = self._sanitize_doc_name(doc_name)
         blob_name = f"{safe_name}/manifest.json"
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            # Store manifest in the pages container
-            container_client = blob_service_client.get_container_client(self.pages_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
-            await blob_client.upload_blob(json_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        # Store manifest in the pages container
+        container_client = blob_service_client.get_container_client(self.pages_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
+        await blob_client.upload_blob(json_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
 
     async def write_status_json(self, status_name: str, data: dict) -> str:
         """Write pipeline status JSON to blob storage."""
         # Store in a 'status' directory at the root level
         blob_name = f"status/{status_name}.json"
 
-        async with BlobServiceClient(
-            account_url=self.account_url,
-            credential=self.credential
-        ) as blob_service_client:
-            # Store status in the pages container
-            container_client = blob_service_client.get_container_client(self.pages_container)
-            blob_client = container_client.get_blob_client(blob_name)
-            json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
-            await blob_client.upload_blob(json_bytes, overwrite=True)
+        blob_service_client = await self._get_blob_service_client()
+        # Store status in the pages container
+        container_client = blob_service_client.get_container_client(self.pages_container)
+        blob_client = container_client.get_blob_client(blob_name)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
+        await blob_client.upload_blob(json_bytes, overwrite=True)
 
-            return unquote(blob_client.url)
+        return unquote(blob_client.url)
 
 
 def create_artifact_storage(config: ArtifactsConfig) -> ArtifactStorage:

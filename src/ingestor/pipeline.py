@@ -1497,4 +1497,6 @@ class Pipeline:
             await self.search_uploader.close()
         if self.media_describer and hasattr(self.media_describer, 'close'):
             await self.media_describer.close()
+        if self.artifact_storage and hasattr(self.artifact_storage, 'close'):
+            await self.artifact_storage.close()
 
