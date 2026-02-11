@@ -1,0 +1,5 @@
+# Enhanced PDF Processing
+# Install: pip install -r requirements-pdf.txt
+# Note: Base PDF support already included in requirements.txt
+
+markitdown[pdf]>=0.0.1  # Enhanced offline PDF extraction

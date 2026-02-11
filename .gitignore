@@ -1,0 +1,150 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.claude/
+
+# Environment variables (CRITICAL - Never commit real credentials!)
+# Block all .env files with secrets
+.env
+.env.*
+!.env.*.example
+!.env.example
+
+# Specific env files that may contain secrets (explicit listing)
+.env.local
+.env.dev
+.env.staging
+.env.prod
+.env.production
+.env.backup
+.env.azure
+.env.offline
+.env.hybrid
+.env.test
+.env.test_*
+.env_*
+
+# Env files in subdirectories
+envs/.env
+envs/.env.*
+!envs/.env.*.example
+!envs/.env.example
+envs/env.*
+!envs/env.*.example
+
+# Wildcard pattern for any .env variants
+*.env
+!.env.example
+!.env.*.example
+!*.example.env
+
+# Credentials and keys
+*.key
+*.pem
+*.pfx
+*.p12
+credentials.json
+secrets.json
+config.json
+
+# Logs and artifacts
+logs/
+test_artifacts/
+artifacts/
+artifacts_offline/
+artifacts_hybrid/
+test_file/
+*.log
+nul
+src/logs/
+src/test_artifacts/
+src/artifacts/
+
+# Test data and vector databases
+chroma_data/
+chroma_data_*/
+chroma_db/
+*.sqlite3
+*.sqlite3-*
+
+# Temporary files
+temp_output.txt
+test_output.log
+benchmark_output.log
+analyze_test_results.py
+*.tmp
+*.bak
+.env.backup_*
+.env.*.backup
+.env_backup
+.env.azure_backup
+backups/
+
+# Azure
+.azure/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Data files (potentially sensitive documents)
+data/
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+!examples/**/*.pdf
+!examples/**/*.docx
+!docs/**/*.pdf
+
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Local configuration (tracked with generic version on GitHub)
+src/ingestor/index.py
+test_db/

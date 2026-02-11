@@ -1,0 +1,9 @@
+# Alternative Embeddings Providers
+# Install: pip install -r requirements-embeddings.txt
+
+# Hugging Face (local models)
+sentence-transformers>=2.3.0  # Local embedding models
+torch>=2.0.0                  # Required by sentence-transformers (CPU version)
+
+# Cohere (API-based)
+cohere>=5.0.0                 # Multilingual embeddings via API
