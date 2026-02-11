@@ -247,6 +247,43 @@ AZURE_SEARCH_INDEX=docs
 
 ---
 
+## Dynamic Chunking Support
+
+All vector stores now work seamlessly with **dynamic chunking** that automatically adjusts chunk sizes based on your embedding model's token limit.
+
+### How It Works
+
+1. Pipeline queries embedding provider's `max_seq_length`
+2. Chunker automatically adjusts limits if needed
+3. Prevents truncation and information loss
+4. Works with any vector store + embedding provider combination
+
+### Benefits
+
+- ✅ No manual configuration needed
+- ✅ Prevents silent data loss from truncation
+- ✅ Maintains semantic overlap between chunks
+- ✅ Works with any embedding model (Azure OpenAI, Hugging Face, Cohere, OpenAI)
+
+### Example
+
+```bash
+# ChromaDB + Small Hugging Face model (256 tokens)
+VECTOR_STORE_MODE=chromadb
+EMBEDDINGS_MODE=huggingface
+HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2  # max_seq_length = 256
+
+# Initial chunking config
+CHUNKING_MAX_TOKENS=500
+
+# Pipeline automatically adjusts to:
+# → 192 tokens (safe limit with 15% buffer + 10% overlap)
+```
+
+See the [Embeddings Providers Guide](embeddings_providers.md#dynamic-chunking-feature) for full details.
+
+---
+
 ## Troubleshooting
 
 ### ChromaDB: "chromadb is required"

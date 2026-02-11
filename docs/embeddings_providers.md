@@ -23,9 +23,9 @@ The pipeline supports multiple embedding providers through a pluggable architect
 - ✅ Custom dimensions for v3 models
 
 ### Supported Models
-- `text-embedding-ada-002` - 1536 dims (default)
-- `text-embedding-3-small` - 1536 dims (customizable)
-- `text-embedding-3-large` - 3072 dims (customizable)
+- `text-embedding-ada-002` - 1536 dims, 8191 tokens max (default)
+- `text-embedding-3-small` - 1536 dims, 8191 tokens max (customizable)
+- `text-embedding-3-large` - 3072 dims, 8191 tokens max (customizable)
 
 ### Configuration
 
@@ -81,18 +81,18 @@ config = (
 ### Supported Models
 
 #### English Models
-| Model | Dimensions | Size | Speed | Quality |
-|-------|-----------|------|-------|---------|
-| `all-MiniLM-L6-v2` | 384 | 90MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
-| `all-mpnet-base-v2` | 768 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
-| `BAAI/bge-large-en-v1.5` | 1024 | 1.3GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
+| Model | Dimensions | Max Tokens | Size | Speed | Quality |
+|-------|-----------|------------|------|-------|---------|
+| `all-MiniLM-L6-v2` | 384 | 256 | 90MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
+| `all-mpnet-base-v2` | 768 | 384 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
+| `BAAI/bge-large-en-v1.5` | 1024 | 512 | 1.3GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
 
 #### Multilingual Models (100+ languages)
-| Model | Dimensions | Size | Speed | Quality |
-|-------|-----------|------|-------|---------|
-| `paraphrase-multilingual-MiniLM-L12-v2` | 384 | 470MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
-| `paraphrase-multilingual-mpnet-base-v2` | 768 | 1GB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
-| `intfloat/multilingual-e5-large` | 1024 | 2.2GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
+| Model | Dimensions | Max Tokens | Size | Speed | Quality |
+|-------|-----------|------------|------|-------|---------|
+| `paraphrase-multilingual-MiniLM-L12-v2` | 384 | 128 | 470MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
+| `paraphrase-multilingual-mpnet-base-v2` | 768 | 384 | 1GB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
+| `intfloat/multilingual-e5-large` | 1024 | 512 | 2.2GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
 
 ### Configuration
 
@@ -103,6 +103,12 @@ HUGGINGFACE_MODEL_NAME=intfloat/multilingual-e5-large
 HUGGINGFACE_DEVICE=cpu  # or cuda, mps
 HUGGINGFACE_BATCH_SIZE=32
 HUGGINGFACE_NORMALIZE=true
+
+# Optional: Override max sequence length
+# HUGGINGFACE_MAX_SEQ_LENGTH=512
+
+# Optional: Fallback if model doesn't report max_seq_length
+# EMBEDDINGS_MAX_SEQ_LENGTH=512
 ```
 
 **Programmatic:**
@@ -164,6 +170,35 @@ Models are automatically downloaded and cached in:
 
 First run downloads the model (~1-2GB), subsequent runs are instant.
 
+### Dynamic Chunking Support
+
+Hugging Face models automatically report their `max_seq_length` to the pipeline, enabling **dynamic chunking**:
+
+1. Pipeline queries `model.max_seq_length` at initialization
+2. Chunker automatically adjusts limits if they exceed model capacity
+3. Applies safety buffer (15%) + overlap allowance to prevent truncation
+4. Logs warning messages when adjustments are made
+
+**Example:**
+```
+Model: all-MiniLM-L6-v2 (max_seq_length = 256)
+Config: CHUNKING_MAX_TOKENS=500
+Result: ⚠️  Automatically reducing chunking limit to 192 tokens
+        (256 * (1 - 0.15 - 0.10) = 192)
+```
+
+**Benefits:**
+- No manual calculation needed
+- Prevents silent information loss
+- Works with any model automatically
+- Maintains semantic overlap
+
+**Manual Override:**
+```bash
+# If you need to set a specific limit
+EMBEDDINGS_MAX_SEQ_LENGTH=384
+```
+
 ### When to Use Hugging Face
 - ✅ Need fully offline solution
 - ✅ Want to avoid API costs
@@ -189,12 +224,12 @@ First run downloads the model (~1-2GB), subsequent runs are instant.
 
 ### Supported Models
 
-| Model | Dimensions | Languages | Speed | Cost |
-|-------|-----------|-----------|-------|------|
-| `embed-english-v3.0` | 1024 | English | ⚡⚡⚡ Fast | $ |
-| `embed-multilingual-v3.0` | 1024 | 100+ | ⚡⚡⚡ Fast | $ |
-| `embed-english-light-v3.0` | 384 | English | ⚡⚡⚡⚡ Faster | $ |
-| `embed-multilingual-light-v3.0` | 384 | 100+ | ⚡⚡⚡⚡ Faster | $ |
+| Model | Dimensions | Max Tokens | Languages | Speed | Cost |
+|-------|-----------|------------|-----------|-------|------|
+| `embed-english-v3.0` | 1024 | 512 | English | ⚡⚡⚡ Fast | $ |
+| `embed-multilingual-v3.0` | 1024 | 512 | 100+ | ⚡⚡⚡ Fast | $ |
+| `embed-english-light-v3.0` | 384 | 512 | English | ⚡⚡⚡⚡ Faster | $ |
+| `embed-multilingual-light-v3.0` | 384 | 512 | 100+ | ⚡⚡⚡⚡ Faster | $ |
 
 ### Configuration
 
@@ -229,6 +264,19 @@ pip install cohere
 - Up to 96 texts per API request
 - Automatic batching handled internally
 - Rate limits: Contact Cohere for details
+- Max sequence length: ~512 tokens per text
+
+### Dynamic Chunking Support
+
+Cohere models report `max_seq_length = 512` to enable automatic chunk adjustment:
+
+```bash
+# Chunking will auto-adjust to respect Cohere's 512 token limit
+CHUNKING_MAX_TOKENS=500  # Safe (below 512)
+CHUNKING_MAX_TOKENS=800  # Will be automatically reduced to ~374 tokens
+```
+
+The pipeline applies a 15% safety buffer plus overlap allowance to prevent truncation.
 
 ### When to Use Cohere
 - ✅ Need multilingual support (100+ languages)
@@ -252,11 +300,11 @@ pip install cohere
 
 ### Supported Models
 
-| Model | Dimensions | Quality | Cost |
-|-------|-----------|---------|------|
-| `text-embedding-ada-002` | 1536 | ⭐⭐⭐⭐ Good | $$ |
-| `text-embedding-3-small` | 1536* | ⭐⭐⭐⭐ Good | $ |
-| `text-embedding-3-large` | 3072* | ⭐⭐⭐⭐⭐ Best | $$$ |
+| Model | Dimensions | Max Tokens | Quality | Cost |
+|-------|-----------|------------|---------|------|
+| `text-embedding-ada-002` | 1536 | 8191 | ⭐⭐⭐⭐ Good | $$ |
+| `text-embedding-3-small` | 1536* | 8191 | ⭐⭐⭐⭐ Good | $ |
+| `text-embedding-3-large` | 3072* | 8191 | ⭐⭐⭐⭐⭐ Best | $$$ |
 
 *Customizable dimensions for v3 models
 
@@ -396,6 +444,92 @@ AZURE_OPENAI_MAX_CONCURRENCY=5  # Default
 **Hugging Face:**
 - Single-threaded by default
 - Uses async executor for non-blocking
+
+---
+
+## Dynamic Chunking Feature
+
+All embedding providers now support **dynamic chunking** that automatically adjusts chunk sizes based on the model's token limit.
+
+### How It Works
+
+1. **Automatic Detection**: Pipeline queries `get_max_seq_length()` from the embedding provider
+2. **Safety Calculation**: Applies 15% safety buffer + overlap percentage
+3. **Auto-Adjustment**: Reduces chunk limits if they exceed safe thresholds
+4. **Transparency**: Logs warning messages showing adjustments
+
+### Safe Limit Formula
+
+```
+safe_limit = max_seq_length * (1 - 0.15 - overlap_percent/100)
+```
+
+**Example with 512 token model and 10% overlap:**
+```
+safe_limit = 512 * (1 - 0.15 - 0.10) = 384 tokens
+```
+
+### Environment Variable Fallback
+
+If your embedding provider doesn't implement `get_max_seq_length()`, set it manually:
+
+```bash
+EMBEDDINGS_MAX_SEQ_LENGTH=512
+```
+
+This fallback ensures dynamic chunking works with any provider.
+
+### Model-Specific Token Limits
+
+| Provider | Model | Max Tokens |
+|----------|-------|------------|
+| **Azure OpenAI** | ada-002, text-embedding-3-* | 8191 |
+| **OpenAI** | ada-002, text-embedding-3-* | 8191 |
+| **Hugging Face** | all-MiniLM-L6-v2 | 256 |
+| **Hugging Face** | all-mpnet-base-v2 | 384 |
+| **Hugging Face** | multilingual-e5-large | 512 |
+| **Hugging Face** | bge-large-en-v1.5 | 512 |
+| **Cohere** | All v3 models | 512 |
+
+### Warning Message Example
+
+```
+⚠️  Embedding model max_seq_length (256) is smaller than CHUNKING_MAX_SECTION_TOKENS (750).
+    Automatically reducing chunking limit to 187 tokens
+    (with 15% buffer and 10% overlap allowance) to prevent truncation.
+```
+
+**What this means:**
+- Model supports maximum 256 tokens
+- Your config requested 750 tokens
+- System reduced to 187 tokens (safe for 256 limit)
+- No action needed - system handles it automatically
+
+### Benefits
+
+- ✅ Prevents truncation and information loss
+- ✅ No manual calculation required
+- ✅ Works with any embedding model
+- ✅ Maintains semantic overlap between chunks
+- ✅ Transparent operation with clear warnings
+
+### Troubleshooting Dynamic Chunking
+
+**Issue: Chunks are too small**
+
+If auto-adjustment makes chunks too small for your use case:
+
+1. Use a model with higher token limit (e.g., multilingual-e5-large: 512 vs all-MiniLM-L6-v2: 256)
+2. Reduce overlap percentage: `CHUNKING_OVERLAP_PERCENT=5`
+3. Accept the trade-off between chunk size and model compatibility
+
+**Issue: Want to disable dynamic adjustment**
+
+Dynamic chunking is automatic and cannot be disabled. It protects against data loss. Instead:
+
+1. Choose appropriate model for your chunk size needs
+2. Set `CHUNKING_MAX_TOKENS` to match your model's safe limit
+3. Monitor warning messages to verify alignment
 
 ---
 

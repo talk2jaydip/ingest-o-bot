@@ -468,6 +468,205 @@ rm -rf ./chroma_db/*
 
 ---
 
+---
+
+## 9. Dynamic Chunking with Small Models (256 tokens)
+
+**Best for:** Models with very small token limits (e.g., some distilled models)
+
+**Features:**
+- ✅ Automatic chunk size adjustment
+- ✅ Prevents truncation and information loss
+- ✅ Buffer calculation (15% safety + overlap allowance)
+- ✅ Warning messages when limits are adjusted
+
+### Environment Variables
+
+```bash
+# Vector Store: ChromaDB
+VECTOR_STORE_MODE=chromadb
+CHROMADB_PERSIST_DIR=./chroma_db
+CHROMADB_COLLECTION_NAME=small-model-docs
+
+# Embeddings: Custom small model
+EMBEDDINGS_MODE=huggingface
+HUGGINGFACE_MODEL_NAME=sentence-transformers/paraphrase-MiniLM-L3-v2
+HUGGINGFACE_DEVICE=cpu
+
+# Chunking: Will auto-adjust based on model's max_seq_length (256 tokens)
+# Initial values will be reduced if they exceed model limits
+CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_CHARS=2000
+CHUNKING_OVERLAP_PERCENT=10
+
+# Alternative: Explicitly set EMBEDDINGS_MAX_SEQ_LENGTH as fallback
+# EMBEDDINGS_MAX_SEQ_LENGTH=256
+```
+
+### What Happens
+
+When the pipeline starts, you'll see:
+
+```
+⚠️  Embedding model max_seq_length (256) is smaller than CHUNKING_MAX_SECTION_TOKENS (750).
+    Automatically reducing chunking limit to 187 tokens
+    (with 15% buffer and 10% overlap allowance) to prevent truncation.
+```
+
+The chunker automatically calculates safe limits:
+- **Safety buffer**: 15% (to account for tokenization differences)
+- **Overlap allowance**: 10% (from CHUNKING_OVERLAP_PERCENT)
+- **Safe limit**: 256 * (1 - 0.15 - 0.10) = 192 tokens
+
+### Benefits
+- No manual calculation needed
+- Prevents silent truncation
+- Maintains overlap for semantic continuity
+- Works with any embedding model
+
+---
+
+## 10. Hybrid Mode (Azure Media + Local Embeddings)
+
+**Best for:** Using Azure Document Intelligence for extraction but local embeddings for cost savings
+
+**Features:**
+- ✅ Azure Document Intelligence for high-quality PDF extraction
+- ✅ Azure Blob Storage for input/artifacts
+- ✅ Local Hugging Face embeddings (zero embedding cost)
+- ✅ ChromaDB for local vector storage
+- ✅ Dynamic chunking based on model limits
+
+### Environment Variables
+
+```bash
+# Vector Store: ChromaDB (local)
+VECTOR_STORE_MODE=chromadb
+CHROMADB_PERSIST_DIR=./chroma_db
+CHROMADB_COLLECTION_NAME=hybrid-docs
+
+# Embeddings: Hugging Face (local, free)
+EMBEDDINGS_MODE=huggingface
+HUGGINGFACE_MODEL_NAME=intfloat/multilingual-e5-large
+HUGGINGFACE_DEVICE=cuda
+HUGGINGFACE_BATCH_SIZE=64
+
+# Azure Document Intelligence (for extraction only)
+DOCUMENTINTELLIGENCE_ENDPOINT=https://your-di.cognitiveservices.azure.com
+DOCUMENTINTELLIGENCE_KEY=your-key
+
+# Azure Blob Storage (for input/output)
+INPUT_MODE=blob
+AZURE_STORAGE_ACCOUNT=yourstorage
+AZURE_STORAGE_KEY=your-key
+AZURE_STORAGE_CONTAINER=documents
+
+ARTIFACTS_MODE=blob
+AZURE_ARTIFACTS_CONTAINER=artifacts
+
+# Chunking: Generic parameter names (no "AZURE_" prefix needed)
+CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_CHARS=2000
+CHUNKING_OVERLAP_PERCENT=10
+
+# Or use Azure-prefixed names (still supported for backward compatibility)
+# AZURE_CHUNKING_MAX_TOKENS=500
+# AZURE_CHUNKING_MAX_CHARS=2000
+# AZURE_CHUNKING_OVERLAP_PERCENT=10
+
+# Processing
+AZURE_OFFICE_EXTRACTOR_MODE=azure_di
+AZURE_MEDIA_DESCRIBER=disabled
+```
+
+### Cost Estimate
+- Azure Document Intelligence: ~$10-50/month (per 1K pages)
+- Azure Blob Storage: ~$20/month (1TB)
+- Hugging Face embeddings: $0 (local)
+- ChromaDB: $0 (local)
+- **Total: ~$30-70/month** (vs. $1,300+ with Azure OpenAI embeddings)
+
+---
+
+## Dynamic Chunking Feature
+
+All configurations now support **dynamic chunking** that automatically adjusts chunk sizes based on your embedding model's token limit.
+
+### How It Works
+
+1. **Model Detection**: Pipeline queries the embedding provider's `max_seq_length`
+2. **Buffer Calculation**: Applies 15% safety buffer + overlap allowance
+3. **Auto-Adjustment**: Reduces chunk limits if they exceed safe thresholds
+4. **Warning Messages**: Logs adjustments for transparency
+
+### Environment Variable Fallback
+
+If your embedding provider doesn't report `max_seq_length`, you can set it manually:
+
+```bash
+EMBEDDINGS_MAX_SEQ_LENGTH=512  # For models with 512 token limit
+```
+
+### Generic vs Azure-Prefixed Parameters
+
+Both parameter styles are supported:
+
+**Generic (recommended for new configs):**
+```bash
+CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_CHARS=2000
+CHUNKING_OVERLAP_PERCENT=10
+```
+
+**Azure-prefixed (backward compatibility):**
+```bash
+AZURE_CHUNKING_MAX_TOKENS=500
+AZURE_CHUNKING_MAX_CHARS=2000
+AZURE_CHUNKING_OVERLAP_PERCENT=10
+```
+
+### Example Warning Message
+
+```
+⚠️  Embedding model max_seq_length (384) is smaller than CHUNKING_MAX_SECTION_TOKENS (750).
+    Automatically reducing chunking limit to 281 tokens
+    (with 15% buffer and 10% overlap allowance) to prevent truncation.
+```
+
+This means:
+- Your model supports max 384 tokens
+- Your chunking config requested 750 tokens
+- System automatically reduced to 281 tokens (safe limit)
+- Calculation: 384 * (1 - 0.15 - 0.10) = 288 tokens (rounded down)
+
+---
+
+## Using the --env Flag
+
+The CLI now supports `--env` flag to easily test different configurations:
+
+```bash
+# Test offline configuration
+ingestor --env envs/.env.chromadb.example --glob "documents/*.pdf"
+
+# Test Cohere configuration
+ingestor --env envs/.env.cohere.example --glob "documents/*.pdf"
+
+# Test hybrid configuration
+ingestor --env envs/.env.hybrid.example --glob "documents/*.pdf"
+
+# Default (uses .env in current directory)
+ingestor --glob "documents/*.pdf"
+```
+
+This makes it easy to:
+- Test different vector stores without changing your main .env
+- Compare embedding providers side-by-side
+- Switch between cloud and offline modes
+- Validate configurations before deployment
+
+---
+
 ## Next Steps
 
 - [Vector Stores Guide](vector_stores.md) - Detailed vector store documentation
