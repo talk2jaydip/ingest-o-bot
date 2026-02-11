@@ -179,7 +179,7 @@ pip install -r requirements-embeddings.txt
 export VECTOR_STORE_MODE=chromadb
 export CHROMADB_PERSIST_DIR=./chroma_db
 export EMBEDDINGS_MODE=huggingface
-export HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2
+export HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en  # Default: 768 dims, 8192 tokens
 
 # Run
 python examples/offline_chromadb_huggingface.py
@@ -277,7 +277,7 @@ VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en
 
 # Remove Azure Search config (if switching completely)
 ```
@@ -408,7 +408,7 @@ from ingestor import ConfigBuilder
 config = (
     ConfigBuilder()
     .with_chromadb(persist_directory="./db")
-    .with_huggingface_embeddings(model_name="all-MiniLM-L6-v2")
+    .with_huggingface_embeddings(model_name="jinaai/jina-embeddings-v2-base-en")
     .build()
 )
 ```

@@ -300,24 +300,21 @@ Chunk 3: "## New Section\nThis section covers advanced topics." (page 2, 180 tok
 
 ```bash
 # Token limit (HARD - never exceeded)
-AZURE_CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_TOKENS=500  # Generic (recommended)
+AZURE_CHUNKING_MAX_TOKENS=500  # Azure-prefixed (backward compatibility)
 
 # Character limit (SOFT - can exceed by 20%)
-AZURE_CHUNKING_MAX_CHARS=1000
+CHUNKING_MAX_CHARS=1000  # Generic (recommended)
+AZURE_CHUNKING_MAX_CHARS=1000  # Azure-prefixed (backward compatibility)
 
 # Overlap percentage
-AZURE_CHUNKING_OVERLAP_PERCENT=10
+CHUNKING_OVERLAP_PERCENT=10  # Generic (recommended)
+AZURE_CHUNKING_OVERLAP_PERCENT=10  # Azure-prefixed (backward compatibility)
 ```
 
-**Note:** These environment variables are loaded directly by `chunker.py` as default values:
-```python
-# In chunker.py
-DEFAULT_MAX_TOKENS = int(os.getenv("AZURE_CHUNKING_MAX_TOKENS", "500"))
-DEFAULT_SECTION_LENGTH = int(os.getenv("AZURE_CHUNKING_MAX_CHARS", "1000"))
-DEFAULT_OVERLAP_PERCENT = int(os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT", "10"))
-```
+**Note:** These environment variables are loaded by the configuration system. Both generic and Azure-prefixed names are supported for backward compatibility.
 
-This means even if you call `create_chunker()` directly without parameters, it will respect your environment configuration.
+The chunker automatically adjusts these limits based on the embedding model's `max_seq_length` to prevent truncation. See the dynamic chunking feature in the [Embeddings Providers Guide](../embeddings_providers.md#dynamic-chunking-feature) for details.
 
 ### Recommended Values
 

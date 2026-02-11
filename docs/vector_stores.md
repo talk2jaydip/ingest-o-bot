@@ -278,6 +278,9 @@ CHUNKING_MAX_TOKENS=500
 
 # Pipeline automatically adjusts to:
 # → 192 tokens (safe limit with 15% buffer + 10% overlap)
+
+# Note: Default model (jina-embeddings-v2-base-en) has 8192 token limit,
+# so no adjustment needed for most chunking configurations
 ```
 
 See the [Embeddings Providers Guide](embeddings_providers.md#dynamic-chunking-feature) for full details.

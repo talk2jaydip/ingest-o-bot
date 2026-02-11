@@ -83,7 +83,7 @@ CHROMADB_BATCH_SIZE=1000
 
 # Embeddings: Hugging Face (local model)
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en  # Default: 768 dims, 8192 tokens
 HUGGINGFACE_DEVICE=cpu
 HUGGINGFACE_BATCH_SIZE=32
 
@@ -344,7 +344,7 @@ CHROMADB_COLLECTION_NAME=test-docs
 
 # Embeddings: Hugging Face
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en
 HUGGINGFACE_DEVICE=cpu
 HUGGINGFACE_BATCH_SIZE=32
 

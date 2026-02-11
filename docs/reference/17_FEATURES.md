@@ -58,7 +58,7 @@ Implements token-aware batching matching prepdocslib:
 For `text-embedding-3-*` models:
 
 ```bash
-MINI_AOAI_EMB_DIMENSIONS=1536
+AZURE_AOAI_EMB_DIMENSIONS=1536
 ```
 
 | Model | Dimensions |
@@ -71,8 +71,8 @@ MINI_AOAI_EMB_DIMENSIONS=1536
 
 | Mode | Setting | Description |
 |------|---------|-------------|
-| Client-Side | `MINI_USE_INTEGRATED_VECTORIZATION=false` | Generate embeddings locally |
-| Integrated | `MINI_USE_INTEGRATED_VECTORIZATION=true` | Azure Search generates embeddings |
+| Client-Side | `AZURE_USE_INTEGRATED_VECTORIZATION=false` | Generate embeddings locally |
+| Integrated | `AZURE_USE_INTEGRATED_VECTORIZATION=true` | Azure Search generates embeddings |
 
 ---
 
@@ -90,7 +90,7 @@ MINI_AOAI_EMB_DIMENSIONS=1536
 Optional GPT-4o summarization:
 
 ```bash
-MINI_TABLE_SUMMARIES=true
+AZURE_TABLE_SUMMARIES=true
 ```
 
 ---
@@ -108,7 +108,7 @@ MINI_TABLE_SUMMARIES=true
 Uses GPT-4o vision for automatic captioning:
 
 ```bash
-MINI_MEDIA_DESCRIBER=gpt4o
+AZURE_MEDIA_DESCRIBER=gpt4o
 ```
 
 ---
@@ -120,7 +120,7 @@ MINI_MEDIA_DESCRIBER=gpt4o
 Split documents into individual page PDFs for direct citation links:
 
 ```bash
-MINI_GENERATE_PAGE_PDFS=true
+AZURE_GENERATE_PAGE_PDFS=true
 ```
 
 ### Citation URLs
@@ -174,7 +174,7 @@ All API calls use configurable retry logic:
 Configure via:
 
 ```bash
-MINI_AOAI_MAX_RETRIES=3
+AZURE_AOAI_MAX_RETRIES=3
 ```
 
 ---
@@ -204,10 +204,10 @@ artifacts/
 ### Blob Storage
 
 ```bash
-MINI_ARTIFACTS_MODE=blob
-MINI_BLOB_CONTAINER_OUT_PAGES=pages
-MINI_BLOB_CONTAINER_OUT_CHUNKS=chunks
-MINI_BLOB_CONTAINER_OUT_IMAGES=images
+AZURE_ARTIFACTS_MODE=blob
+AZURE_BLOB_CONTAINER_OUT_PAGES=pages
+AZURE_BLOB_CONTAINER_OUT_CHUNKS=chunks
+AZURE_BLOB_CONTAINER_OUT_IMAGES=images
 ```
 
 Containers are auto-created if they don't exist.
