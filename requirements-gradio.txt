@@ -1,0 +1,4 @@
+# Gradio Web UI
+# Install: pip install -r requirements-gradio.txt
+
+gradio>=4.0.0  # Web interface for document ingestion

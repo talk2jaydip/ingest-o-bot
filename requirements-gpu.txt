@@ -1,42 +1,12 @@
-# GPU Support for PyTorch (Hugging Face Embeddings)
-# Install with: pip install -r requirements-gpu.txt
-#
-# This enables GPU acceleration for local embedding models
-# Choose the appropriate version based on your GPU:
+# GPU Acceleration for Local Embeddings
+# Manual installation required - choose your platform:
 
-# ==========================================
-# NVIDIA GPU (CUDA)
-# ==========================================
-# For CUDA 11.8:
-# torch>=2.0.0+cu118
-# torchvision>=0.15.0+cu118
-# torchaudio>=2.0.0+cu118
-# --index-url https://download.pytorch.org/whl/cu118
+# NVIDIA GPU (CUDA 11.8):
+pip install torch>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
 
-# For CUDA 12.1:
-# torch>=2.0.0+cu121
-# torchvision>=0.15.0+cu121
-# torchaudio>=2.0.0+cu121
-# --index-url https://download.pytorch.org/whl/cu121
+# NVIDIA GPU (CUDA 12.1):
+pip install torch>=2.0.0+cu121 --index-url https://download.pytorch.org/whl/cu121
 
-# ==========================================
-# Installation Instructions
-# ==========================================
-# CUDA 11.8 (most common):
-# pip install torch>=2.0.0+cu118 torchvision>=0.15.0+cu118 torchaudio>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
-
-# CUDA 12.1 (newer):
-# pip install torch>=2.0.0+cu121 torchvision>=0.15.0+cu121 torchaudio>=2.0.0+cu121 --index-url https://download.pytorch.org/whl/cu121
-
-# ==========================================
-# Apple Silicon (M1/M2/M3)
-# ==========================================
-# Apple Silicon uses Metal Performance Shaders (MPS) - no special installation needed
-# Just install regular torch: pip install torch>=2.0.0
-# Use HUGGINGFACE_DEVICE=mps in your .env file
-
-# ==========================================
-# CPU Only
-# ==========================================
-# Already included in requirements-embeddings.txt
-# torch>=2.0.0
+# Apple Silicon (M1/M2/M3):
+pip install torch>=2.0.0
+# Set HUGGINGFACE_DEVICE=mps in .env

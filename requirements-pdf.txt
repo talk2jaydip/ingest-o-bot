@@ -1,11 +1,5 @@
-# PDF Processing Support for MarkItDown
-# Install with: pip install -r requirements-pdf.txt
-#
-# This adds PDF extraction capabilities to MarkItDown for offline document processing
-# Without this, you'll need to use Azure Document Intelligence for PDF processing
+# Enhanced PDF Processing
+# Install: pip install -r requirements-pdf.txt
+# Note: Base PDF support already included in requirements.txt
 
-# MarkItDown with PDF support
-markitdown[pdf]>=0.0.1
-
-# Alternative: Install all MarkItDown features (PDF, DOCX, PPTX, etc.)
-# markitdown[all]>=0.0.1
+markitdown[pdf]>=0.0.1  # Enhanced offline PDF extraction
