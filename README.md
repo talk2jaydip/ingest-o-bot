@@ -12,6 +12,7 @@
 - 📄 **Multi-format support**: PDF, DOCX, PPTX, TXT, MD, HTML, JSON, CSV
 - 🧠 **Azure Document Intelligence**: Extract tables, figures, and layout information
 - ✂️ **Layout-aware chunking**: Intelligent text segmentation respecting document structure
+- 🎯 **Dynamic chunking**: Automatic adjustment based on embedding model token limits
 - 🔢 **Pluggable embeddings**: Azure OpenAI, Hugging Face, Cohere, or OpenAI
 - 🗄️ **Pluggable vector stores**: Azure AI Search or ChromaDB
 - 🚀 **Direct index upload**: No skillsets or indexers required
@@ -66,6 +67,37 @@ COHERE_API_KEY=your-key
 ```
 
 📖 **[See all configurations →](docs/configuration_examples.md)**
+
+### Dynamic Chunking
+
+The pipeline now features **automatic chunk size adjustment** based on your embedding model's token limit:
+
+- 🎯 Prevents truncation and information loss
+- 📊 15% safety buffer + overlap allowance
+- ⚠️ Clear warning messages when adjustments occur
+- 🔧 Works with any embedding model automatically
+
+**Example:**
+```
+Model: all-MiniLM-L6-v2 (256 token limit)
+Config: CHUNKING_MAX_TOKENS=500
+Result: Automatically reduced to 192 tokens
+```
+
+Generic parameter names supported alongside Azure-prefixed ones:
+```bash
+# Generic (recommended)
+CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_CHARS=2000
+CHUNKING_OVERLAP_PERCENT=10
+
+# Azure-prefixed (backward compatibility)
+AZURE_CHUNKING_MAX_TOKENS=500
+AZURE_CHUNKING_MAX_CHARS=2000
+AZURE_CHUNKING_OVERLAP_PERCENT=10
+```
+
+See [Embeddings Providers Guide](docs/embeddings_providers.md#dynamic-chunking-feature) for details.
 
 ### Optional Dependencies
 
@@ -222,6 +254,10 @@ ingestor --setup-index --glob "documents/*.pdf"
 # Process single file
 ingestor --pdf "document.pdf"
 
+# Use specific environment file (test different configurations)
+ingestor --env envs/.env.chromadb.example --glob "documents/*.pdf"
+ingestor --env envs/.env.cohere.example --glob "documents/*.pdf"
+
 # Delete index
 ingestor --delete-index
 
@@ -230,6 +266,23 @@ ingestor --check-index
 ```
 
 Run `ingestor --help` for all options.
+
+### Testing Different Configurations
+
+Use the `--env` flag to easily test different vector stores and embedding providers:
+
+```bash
+# Fully offline (ChromaDB + Hugging Face)
+ingestor --env envs/.env.chromadb.example --glob "docs/*.pdf"
+
+# Cloud optimized (Azure Search + Cohere)
+ingestor --env envs/.env.cohere.example --glob "docs/*.pdf"
+
+# Hybrid (Azure Search + local embeddings)
+ingestor --env envs/.env.hybrid.example --glob "docs/*.pdf"
+```
+
+This makes it easy to compare performance, cost, and quality across different configurations without modifying your main `.env` file.
 
 ---
 
