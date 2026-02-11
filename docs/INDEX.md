@@ -92,6 +92,7 @@ Located in `docs/reference/` - Organized by implementation order:
 | 17 | [Features](reference/17_FEATURES.md) | All features documented |
 | 18 | [Architecture](reference/18_ARCHITECTURE.md) | Technical architecture & design |
 | 21 | [Index Schema](reference/21_INDEX_SCHEMA.md) | Complete Azure AI Search index schema reference |
+| 23 | [Known Limitations](reference/23_KNOWN_LIMITATIONS.md) | Known limitations and future enhancements |
 
 ---
 
@@ -167,6 +168,7 @@ docs/
     ├── 19_CITATIONS.md
     ├── 20_TABLE_PROCESSING.md
     ├── 21_INDEX_SCHEMA.md
+    ├── 23_KNOWN_LIMITATIONS.md
     └── validation-reference.md    # Validation system reference
 
 scripts/

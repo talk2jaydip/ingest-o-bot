@@ -24,6 +24,34 @@ Uses the `prebuilt-layout` model with:
 | JSON | Pretty-print formatting |
 | CSV | Markdown table conversion |
 
+### Hyperlink Extraction
+
+**For PDFs (✅ Supported):**
+- Uses **PyMuPDF** to extract hyperlinks from PDF link annotations
+- Converts hyperlinks to markdown format: `[text](url)`
+- Preserves both external URLs and internal page references
+- Extracts URLs from PageFooter comments
+
+**Features:**
+- Automatic hyperlink detection in PDFs
+- Multi-line link support with intelligent merging
+- Quote-aware text matching
+- Preserves link context in searchable text
+
+**Limitations:**
+- Azure Document Intelligence API does not provide hyperlink extraction
+- Office documents (DOCX/PPTX) do not have hyperlink extraction implemented
+- See [Known Limitations](23_KNOWN_LIMITATIONS.md) for details
+
+**Example:**
+```markdown
+# Before extraction:
+His speech can be found here.
+
+# After extraction:
+His speech can be found [here.](https://example.com/speech)
+```
+
 ---
 
 ## 2. Chunking
