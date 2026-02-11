@@ -131,6 +131,17 @@ class CohereEmbeddingsProvider(EmbeddingsProvider):
         """
         return self.model_name
 
+    def get_max_seq_length(self) -> int:
+        """Get maximum sequence length for Cohere embedding models.
+
+        Cohere models have approximately 512 token limit per text.
+        The API handles truncation server-side based on the truncate parameter.
+
+        Returns:
+            Maximum sequence length (~512 tokens)
+        """
+        return 512
+
     async def close(self):
         """Cleanup resources.
 

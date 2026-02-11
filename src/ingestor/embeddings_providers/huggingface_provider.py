@@ -135,6 +135,23 @@ class HuggingFaceEmbeddingsProvider(EmbeddingsProvider):
         """
         return self.model_name
 
+    def get_max_seq_length(self) -> int:
+        """Get maximum sequence length supported by this model.
+
+        Returns the model's max_seq_length property, which indicates the maximum
+        number of tokens the model can process. Text exceeding this limit will be
+        truncated, causing information loss.
+
+        Returns:
+            Maximum sequence length in tokens
+
+        Example:
+            - all-MiniLM-L6-v2: 256 tokens
+            - all-mpnet-base-v2: 384 tokens
+            - multilingual-e5-large: 512 tokens
+        """
+        return self.model.max_seq_length
+
     async def close(self):
         """Cleanup resources.
 

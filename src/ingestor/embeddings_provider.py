@@ -79,6 +79,51 @@ class EmbeddingsProvider(ABC):
         """
         pass
 
+    def get_max_seq_length(self) -> int:
+        """Get maximum sequence length (tokens) supported by this embeddings model.
+
+        This method returns the maximum number of tokens the embedding model can
+        process in a single text. Chunks exceeding this limit will be truncated,
+        losing information and degrading search quality.
+
+        Override this method in your implementation to return the model-specific limit.
+        If not overridden, falls back to EMBEDDINGS_MAX_SEQ_LENGTH environment variable.
+
+        Returns:
+            Maximum number of tokens the model can process
+
+        Raises:
+            ValueError: If not implemented and EMBEDDINGS_MAX_SEQ_LENGTH not set
+
+        Example limits:
+            - Azure OpenAI (text-embedding-ada-002, 3-*): 8191
+            - Hugging Face (all-MiniLM-L6-v2): 256
+            - Hugging Face (all-mpnet-base-v2): 384
+            - Cohere (embed-*-v3.0): 512
+            - OpenAI (text-embedding-*): 8191
+        """
+        import os
+
+        # Check for environment variable fallback
+        env_max_tokens = os.getenv("EMBEDDINGS_MAX_SEQ_LENGTH")
+        if env_max_tokens:
+            try:
+                return int(env_max_tokens)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid EMBEDDINGS_MAX_SEQ_LENGTH value: {env_max_tokens}. "
+                    f"Must be an integer."
+                )
+
+        # If no environment variable and not overridden, raise error
+        raise NotImplementedError(
+            f"get_max_seq_length() not implemented for {self.__class__.__name__}. "
+            f"Either:\n"
+            f"  1. Update the provider implementation to override this method, OR\n"
+            f"  2. Set EMBEDDINGS_MAX_SEQ_LENGTH environment variable with the max token limit.\n"
+            f"\nExample: EMBEDDINGS_MAX_SEQ_LENGTH=256 for models with 256 token limit"
+        )
+
     async def close(self):
         """Close connections and cleanup resources.
 
