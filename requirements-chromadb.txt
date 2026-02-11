@@ -1,0 +1,11 @@
+# ChromaDB vector store support
+# Install with: pip install -r requirements-chromadb.txt
+
+# ChromaDB - Open-source embedding database
+chromadb>=0.4.22
+
+# Note: ChromaDB has its own dependencies including:
+# - onnxruntime (for embeddings if using default ChromaDB models)
+# - numpy, pandas (data processing)
+# - fastapi, uvicorn (for client/server mode)
+# These will be installed automatically by ChromaDB
