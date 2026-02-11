@@ -386,6 +386,146 @@ class AzureOpenAIConfig:
 
 
 @dataclass
+class HuggingFaceEmbeddingsConfig:
+    """Hugging Face embeddings configuration using sentence-transformers.
+
+    Supports local model execution (CPU/GPU) with various multilingual and
+    specialized models.
+    """
+    model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # Latest multilingual default
+    device: str = "cpu"  # "cpu", "cuda", "mps" (Apple Silicon)
+    batch_size: int = 32
+    normalize_embeddings: bool = True
+    max_seq_length: Optional[int] = None  # None = use model default
+    trust_remote_code: bool = False  # Required for some custom models
+
+    # Popular model options:
+    # - "sentence-transformers/all-MiniLM-L6-v2" (384 dims, fast, English)
+    # - "sentence-transformers/all-mpnet-base-v2" (768 dims, quality, English)
+    # - "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" (384 dims, multilingual)
+    # - "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" (768 dims, multilingual)
+    # - "intfloat/multilingual-e5-large" (1024 dims, SOTA multilingual)
+    # - "BAAI/bge-large-en-v1.5" (1024 dims, SOTA English)
+
+    @classmethod
+    def from_env(cls) -> "HuggingFaceEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            HUGGINGFACE_MODEL_NAME: Model identifier from HuggingFace Hub
+            HUGGINGFACE_DEVICE: Device to run on (cpu/cuda/mps)
+            HUGGINGFACE_BATCH_SIZE: Batch size for encoding (default: 32)
+            HUGGINGFACE_NORMALIZE: Normalize embeddings (default: true)
+            HUGGINGFACE_MAX_SEQ_LENGTH: Max sequence length (optional)
+            HUGGINGFACE_TRUST_REMOTE_CODE: Trust remote code (default: false)
+        """
+        model_name = os.getenv(
+            "HUGGINGFACE_MODEL_NAME",
+            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        )
+        device = os.getenv("HUGGINGFACE_DEVICE", "cpu")
+        batch_size = int(os.getenv("HUGGINGFACE_BATCH_SIZE", "32"))
+        normalize = os.getenv("HUGGINGFACE_NORMALIZE", "true").lower() == "true"
+        max_seq_str = os.getenv("HUGGINGFACE_MAX_SEQ_LENGTH")
+        max_seq_length = int(max_seq_str) if max_seq_str else None
+        trust_remote_code = os.getenv("HUGGINGFACE_TRUST_REMOTE_CODE", "false").lower() == "true"
+
+        return cls(
+            model_name=model_name,
+            device=device,
+            batch_size=batch_size,
+            normalize_embeddings=normalize,
+            max_seq_length=max_seq_length,
+            trust_remote_code=trust_remote_code
+        )
+
+
+@dataclass
+class CohereEmbeddingsConfig:
+    """Cohere embeddings API configuration.
+
+    Cohere provides high-quality embeddings optimized for semantic search.
+    """
+    api_key: str
+    model_name: str = "embed-multilingual-v3.0"  # Latest multilingual model
+    input_type: str = "search_document"  # "search_document" or "search_query"
+    truncate: str = "END"  # "NONE", "START", "END"
+
+    # Model options:
+    # - "embed-english-v3.0" (1024 dims, English only)
+    # - "embed-multilingual-v3.0" (1024 dims, 100+ languages)
+    # - "embed-english-light-v3.0" (384 dims, faster)
+    # - "embed-multilingual-light-v3.0" (384 dims, faster, multilingual)
+
+    @classmethod
+    def from_env(cls) -> "CohereEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            COHERE_API_KEY: Cohere API key (required)
+            COHERE_MODEL_NAME: Model name (default: embed-multilingual-v3.0)
+            COHERE_INPUT_TYPE: Input type (default: search_document)
+            COHERE_TRUNCATE: Truncation strategy (default: END)
+        """
+        api_key = os.getenv("COHERE_API_KEY")
+        if not api_key:
+            raise ValueError("COHERE_API_KEY environment variable required")
+
+        model_name = os.getenv("COHERE_MODEL_NAME", "embed-multilingual-v3.0")
+        input_type = os.getenv("COHERE_INPUT_TYPE", "search_document")
+        truncate = os.getenv("COHERE_TRUNCATE", "END")
+
+        return cls(
+            api_key=api_key,
+            model_name=model_name,
+            input_type=input_type,
+            truncate=truncate
+        )
+
+
+@dataclass
+class OpenAIEmbeddingsConfig:
+    """OpenAI embeddings API configuration (non-Azure).
+
+    For users who want to use OpenAI directly instead of Azure OpenAI.
+    """
+    api_key: str
+    model_name: str = "text-embedding-3-small"
+    dimensions: Optional[int] = None  # Optional for text-embedding-3-* models
+    max_retries: int = 3
+    timeout: int = 60
+
+    @classmethod
+    def from_env(cls) -> "OpenAIEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            OPENAI_API_KEY: OpenAI API key (required)
+            OPENAI_EMBEDDING_MODEL: Model name (default: text-embedding-3-small)
+            OPENAI_EMBEDDING_DIMENSIONS: Dimensions for v3 models (optional)
+            OPENAI_MAX_RETRIES: Max retries (default: 3)
+            OPENAI_TIMEOUT: Request timeout in seconds (default: 60)
+        """
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable required")
+
+        model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        dimensions_str = os.getenv("OPENAI_EMBEDDING_DIMENSIONS")
+        dimensions = int(dimensions_str) if dimensions_str else None
+        max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "3"))
+        timeout = int(os.getenv("OPENAI_TIMEOUT", "60"))
+
+        return cls(
+            api_key=api_key,
+            model_name=model_name,
+            dimensions=dimensions,
+            max_retries=max_retries,
+            timeout=timeout
+        )
+
+
+@dataclass
 class ContentUnderstandingConfig:
     """Azure Content Understanding configuration."""
     endpoint: str
@@ -796,10 +936,28 @@ class PipelineConfig:
         embeddings_mode = None
         embeddings_config = None
         if os.getenv("EMBEDDINGS_MODE"):
+            # Explicit mode specified
             embeddings_mode = EmbeddingsMode(os.getenv("EMBEDDINGS_MODE"))
             if embeddings_mode == EmbeddingsMode.AZURE_OPENAI:
                 embeddings_config = azure_openai
-            # Hugging Face, Cohere, OpenAI will be added in Phase 3+
+            elif embeddings_mode == EmbeddingsMode.HUGGINGFACE:
+                embeddings_config = HuggingFaceEmbeddingsConfig.from_env()
+            elif embeddings_mode == EmbeddingsMode.COHERE:
+                embeddings_config = CohereEmbeddingsConfig.from_env()
+            elif embeddings_mode == EmbeddingsMode.OPENAI:
+                embeddings_config = OpenAIEmbeddingsConfig.from_env()
+        elif os.getenv("HUGGINGFACE_MODEL_NAME"):
+            # Hugging Face environment variables present
+            embeddings_mode = EmbeddingsMode.HUGGINGFACE
+            embeddings_config = HuggingFaceEmbeddingsConfig.from_env()
+        elif os.getenv("COHERE_API_KEY"):
+            # Cohere environment variables present
+            embeddings_mode = EmbeddingsMode.COHERE
+            embeddings_config = CohereEmbeddingsConfig.from_env()
+        elif os.getenv("OPENAI_API_KEY") and not os.getenv("AZURE_OPENAI_ENDPOINT"):
+            # OpenAI (non-Azure) environment variables present
+            embeddings_mode = EmbeddingsMode.OPENAI
+            embeddings_config = OpenAIEmbeddingsConfig.from_env()
         elif azure_openai.endpoint:
             # Legacy: Azure OpenAI config present, use it by default
             embeddings_mode = EmbeddingsMode.AZURE_OPENAI
