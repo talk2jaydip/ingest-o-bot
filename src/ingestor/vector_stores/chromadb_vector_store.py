@@ -137,10 +137,18 @@ class ChromaDBVectorStore(VectorStore):
             # Use generic format from to_vector_document()
             doc_dict = chunk_doc.to_vector_document(include_embeddings=True)
 
+            # ChromaDB doesn't accept empty lists in metadata - filter them out
+            clean_metadata = {}
+            for key, value in doc_dict["metadata"].items():
+                if isinstance(value, list) and len(value) == 0:
+                    # Skip empty lists - ChromaDB validation rejects them
+                    continue
+                clean_metadata[key] = value
+
             ids.append(doc_dict["id"])
             embeddings.append(doc_dict["embedding"])
             documents.append(doc_dict["text"])
-            metadatas.append(doc_dict["metadata"])
+            metadatas.append(clean_metadata)
 
         # Infer dimensions from first embedding
         if self._dimensions is None and embeddings:
