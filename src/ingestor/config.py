@@ -131,6 +131,60 @@ class SearchConfig:
 
 
 @dataclass
+class ChromaDBConfig:
+    """ChromaDB vector store configuration.
+
+    Supports three deployment modes:
+    1. Persistent: Local disk storage (persist_directory set)
+    2. In-memory: Ephemeral storage (persist_directory=None, host=None)
+    3. Client/server: Remote ChromaDB server (host and port set)
+    """
+    collection_name: str = "documents"
+
+    # Local persistent or in-memory mode
+    persist_directory: Optional[str] = None  # None = in-memory
+
+    # Client/server mode
+    host: Optional[str] = None
+    port: Optional[int] = None
+
+    # Optional: Authentication for client/server mode
+    auth_token: Optional[str] = None
+
+    # Performance tuning
+    batch_size: int = 1000
+
+    @classmethod
+    def from_env(cls) -> "ChromaDBConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            CHROMADB_COLLECTION_NAME: Collection name (default: "documents")
+            CHROMADB_PERSIST_DIR: Local storage directory (optional)
+            CHROMADB_HOST: Server host for client/server mode (optional)
+            CHROMADB_PORT: Server port (default: 8000)
+            CHROMADB_AUTH_TOKEN: Authentication token (optional)
+            CHROMADB_BATCH_SIZE: Upload batch size (default: 1000)
+        """
+        collection_name = os.getenv("CHROMADB_COLLECTION_NAME", "documents")
+        persist_directory = os.getenv("CHROMADB_PERSIST_DIR")
+        host = os.getenv("CHROMADB_HOST")
+        port_str = os.getenv("CHROMADB_PORT")
+        port = int(port_str) if port_str else None
+        auth_token = os.getenv("CHROMADB_AUTH_TOKEN")
+        batch_size = int(os.getenv("CHROMADB_BATCH_SIZE", "1000"))
+
+        return cls(
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            host=host,
+            port=port,
+            auth_token=auth_token,
+            batch_size=batch_size
+        )
+
+
+@dataclass
 class DocumentIntelligenceConfig:
     """Azure Document Intelligence configuration."""
     endpoint: Optional[str] = None
@@ -722,10 +776,17 @@ class PipelineConfig:
         vector_store_mode = None
         vector_store_config = None
         if os.getenv("VECTOR_STORE_MODE"):
+            # Explicit mode specified
             vector_store_mode = VectorStoreMode(os.getenv("VECTOR_STORE_MODE"))
             if vector_store_mode == VectorStoreMode.AZURE_SEARCH:
                 vector_store_config = search
-            # ChromaDB and others will be added in Phase 2+
+            elif vector_store_mode == VectorStoreMode.CHROMADB:
+                vector_store_config = ChromaDBConfig.from_env()
+            # Other modes (Pinecone, Weaviate, etc.) will be added in future phases
+        elif os.getenv("CHROMADB_COLLECTION_NAME") or os.getenv("CHROMADB_HOST") or os.getenv("CHROMADB_PERSIST_DIR"):
+            # ChromaDB environment variables present, use ChromaDB
+            vector_store_mode = VectorStoreMode.CHROMADB
+            vector_store_config = ChromaDBConfig.from_env()
         elif search.endpoint:
             # Legacy: Azure Search config present, use it by default
             vector_store_mode = VectorStoreMode.AZURE_SEARCH
