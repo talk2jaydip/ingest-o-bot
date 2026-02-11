@@ -33,7 +33,7 @@ os.environ.update({
 
     # Embeddings: Hugging Face (local model)
     "EMBEDDINGS_MODE": "huggingface",
-    "HUGGINGFACE_MODEL_NAME": "sentence-transformers/all-MiniLM-L6-v2",  # 384 dims, fast
+    "HUGGINGFACE_MODEL_NAME": "sentence-transformers/all-mpnet-base-v2",  # 768 dims, good quality
     "HUGGINGFACE_DEVICE": "cpu",  # or cuda, mps for GPU acceleration
     "HUGGINGFACE_BATCH_SIZE": "32",
     "HUGGINGFACE_NORMALIZE": "true",
@@ -101,7 +101,7 @@ async def main():
 
     # Run pipeline
     print("Processing documents...")
-    print("Note: First run will download the Hugging Face model (~90MB)")
+    print("Note: First run will download the Hugging Face model (~420MB)")
     print("      Subsequent runs will use cached model.")
     print()
 

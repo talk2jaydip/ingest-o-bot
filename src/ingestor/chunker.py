@@ -60,6 +60,10 @@ logger = get_logger(__name__)
 ENCODING_MODEL = "text-embedding-ada-002"
 bpe = tiktoken.encoding_for_model(ENCODING_MODEL)
 
+# Orphan merging threshold: Never merge chunks >= 100 tokens
+# This prevents small embedding models from over-merging reasonable chunks
+ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD = 100
+
 # Sentence endings (standard + CJK)
 SENTENCE_ENDINGS = [".", "!", "?", "。", "！", "？", "‼", "⁇", "⁈", "⁉"]
 
@@ -1044,10 +1048,21 @@ class LayoutAwareChunker:
         while i < len(chunks):
             current = chunks[i]
 
-            # Check if current chunk is below minimum (< 500 tokens)
+            # Calculate orphan threshold based on embedding model size
+            # For small embedding models (< 400 tokens), use conservative threshold
+            if self.embedding_max_tokens and self.embedding_max_tokens < 400:
+                # For small models, only merge truly tiny fragments (< 30% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.3)
+            else:
+                # For large models, use standard threshold (< 70% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.7)
+
+            # Ensure minimum threshold to prevent over-merging
+            orphan_threshold = max(ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD, orphan_threshold)
+
             # Skip if it contains atomic tables/figures (they're allowed to be any size)
             is_atomic_table = '<table>' in current.text.lower() or '<figure' in current.text.lower()
-            if current.token_count is not None and current.token_count < 500 and len(merged) > 0 and not is_atomic_table:
+            if current.token_count is not None and current.token_count < orphan_threshold and len(merged) > 0 and not is_atomic_table:
                 prev = merged[-1]
                 combined_text = prev.text + "\n\n" + current.text
                 combined_tokens = len(bpe.encode(combined_text))
@@ -1191,8 +1206,20 @@ class LayoutAwareChunker:
 
             print(f"  📄 Chunk {i+1}: page{current.page_num+1}, {current.token_count}tok, is_atomic={is_atomic}, merged_count={len(merged)}")
 
-            # Try to merge if below minimum and not purely atomic
-            if current.token_count is not None and current.token_count < 500 and len(merged) > 0 and not is_atomic:
+            # Calculate orphan threshold based on embedding model size
+            # For small embedding models (< 400 tokens), use conservative threshold
+            if self.embedding_max_tokens and self.embedding_max_tokens < 400:
+                # For small models, only merge truly tiny fragments (< 30% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.3)
+            else:
+                # For large models, use standard threshold (< 70% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.7)
+
+            # Ensure minimum threshold to prevent over-merging
+            orphan_threshold = max(ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD, orphan_threshold)
+
+            # Try to merge if below threshold and not purely atomic
+            if current.token_count is not None and current.token_count < orphan_threshold and len(merged) > 0 and not is_atomic:
                 prev = merged[-1]
 
                 # Check semantic boundaries - prioritize content continuity over structure:
@@ -1228,25 +1255,31 @@ class LayoutAwareChunker:
                     print(f"  🔍 Checking: prev={prev_actual_tokens}tok (was {prev.token_count}), current={current_actual_tokens}tok (was {current.token_count}), combined={combined_tokens}tok")
 
                     # Priority: Semantic preservation over strict limits
-                    # Strategy:
-                    # 1. If combined ≤ 750: Always merge (preferred range)
-                    # 2. If current < 400: Semantic merge up to 1000 tokens
-                    # 3. If current < 500: Semantic merge up to 900 tokens
+                    # Strategy: Scale thresholds based on max_section_length_tokens
+                    # For small models (197 tokens): don't allow semantic merges beyond limit
+                    # For large models (750 tokens): allow up to 1.3x for semantic coherence
+
+                    # Scale semantic merge thresholds based on max_section_length_tokens
+                    small_chunk_threshold = int(self.max_section_length_tokens * 0.5)
+                    very_small_threshold = int(self.max_section_length_tokens * 0.7)
+                    max_combined = int(self.max_section_length_tokens * 1.2)
+
                     allow_merge = False
 
                     if combined_tokens <= self.max_section_length_tokens:
                         # Within target range - always merge
                         allow_merge = True
-                    elif current_actual_tokens < 400:
-                        # Very small chunk - strong semantic need to merge
-                        if combined_tokens <= 1000:
+                    elif current_actual_tokens < small_chunk_threshold:
+                        # Very small chunk - semantic merge up to 120% of limit
+                        if combined_tokens <= max_combined:
                             allow_merge = True
-                            print(f"  🔀 Semantic merge (<400tok orphan): {combined_tokens} tokens")
-                    elif current_actual_tokens < 500:
-                        # Below minimum - semantic merge up to 900
-                        if combined_tokens <= 900:
+                            print(f"  🔀 Semantic merge (<{small_chunk_threshold}tok orphan): {combined_tokens} tokens")
+                    elif current_actual_tokens < very_small_threshold:
+                        # Small chunk - semantic merge up to 115% of limit
+                        max_combined_small = int(self.max_section_length_tokens * 1.15)
+                        if combined_tokens <= max_combined_small:
                             allow_merge = True
-                            print(f"  🔀 Semantic merge (<500tok): {combined_tokens} tokens")
+                            print(f"  🔀 Semantic merge (<{very_small_threshold}tok): {combined_tokens} tokens")
 
                     if allow_merge:
                         print(f"  ✅ Merging: chunk@page{current.page_num+1} ({current.token_count}tok) + prev@page{prev.page_num+1} ({prev.token_count}tok) = {combined_tokens}tok")

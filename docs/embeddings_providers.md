@@ -83,8 +83,8 @@ config = (
 #### English Models
 | Model | Dimensions | Max Tokens | Size | Speed | Quality |
 |-------|-----------|------------|------|-------|---------|
+| `all-mpnet-base-v2` (default) | 768 | 384 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
 | `all-MiniLM-L6-v2` | 384 | 256 | 90MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
-| `all-mpnet-base-v2` | 768 | 384 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
 | `BAAI/bge-large-en-v1.5` | 1024 | 512 | 1.3GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
 
 #### Multilingual Models (100+ languages)
@@ -99,16 +99,16 @@ config = (
 **Environment Variables:**
 ```bash
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=intfloat/multilingual-e5-large
+HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2  # Default
 HUGGINGFACE_DEVICE=cpu  # or cuda, mps
 HUGGINGFACE_BATCH_SIZE=32
 HUGGINGFACE_NORMALIZE=true
 
 # Optional: Override max sequence length
-# HUGGINGFACE_MAX_SEQ_LENGTH=512
+# HUGGINGFACE_MAX_SEQ_LENGTH=384
 
 # Optional: Fallback if model doesn't report max_seq_length
-# EMBEDDINGS_MAX_SEQ_LENGTH=512
+# EMBEDDINGS_MAX_SEQ_LENGTH=384
 ```
 
 **Programmatic:**
@@ -116,12 +116,23 @@ HUGGINGFACE_NORMALIZE=true
 config = (
     ConfigBuilder()
     .with_huggingface_embeddings(
-        model_name="intfloat/multilingual-e5-large",
-        device="cuda",  # GPU acceleration
+        model_name="sentence-transformers/all-mpnet-base-v2",  # Default
+        device="cpu",
         batch_size=32
     )
     .build()
 )
+
+# For multilingual use case:
+# config = (
+#     ConfigBuilder()
+#     .with_huggingface_embeddings(
+#         model_name="intfloat/multilingual-e5-large",
+#         device="cuda",  # GPU acceleration
+#         batch_size=32
+#     )
+#     .build()
+# )
 ```
 
 ### Installation
@@ -181,10 +192,10 @@ Hugging Face models automatically report their `max_seq_length` to the pipeline,
 
 **Example:**
 ```
-Model: all-MiniLM-L6-v2 (max_seq_length = 256)
+Model: all-mpnet-base-v2 (max_seq_length = 384)
 Config: CHUNKING_MAX_TOKENS=500
-Result: ⚠️  Automatically reducing chunking limit to 192 tokens
-        (256 * (1 - 0.15 - 0.10) = 192)
+Result: ⚠️  Automatically reducing chunking limit to 288 tokens
+        (384 * (1 - 0.15 - 0.10) = 288)
 ```
 
 **Benefits:**
@@ -381,12 +392,12 @@ EMBEDDINGS_MODE=azure_openai
 VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2
+HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
 HUGGINGFACE_DEVICE=cpu
 ```
 - Fully offline
 - No API costs
-- Fast setup
+- Good quality (768 dims)
 
 ### Best for Multilingual (Cloud + Local Hybrid)
 ```bash
@@ -404,11 +415,22 @@ HUGGINGFACE_DEVICE=cuda
 VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=all-MiniLM-L6-v2
+HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
 ```
 - Zero API costs
 - Local storage
-- Good quality
+- Good quality (768 dims)
+
+### Lightweight Option (Limited Resources)
+```bash
+VECTOR_STORE_MODE=chromadb
+CHROMADB_PERSIST_DIR=./chroma_db
+EMBEDDINGS_MODE=huggingface
+HUGGINGFACE_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+```
+- Very small model (~90MB)
+- Fast on CPU
+- Lower dimensions (384)
 
 ---
 
@@ -519,7 +541,7 @@ This fallback ensures dynamic chunking works with any provider.
 
 If auto-adjustment makes chunks too small for your use case:
 
-1. Use a model with higher token limit (e.g., multilingual-e5-large: 512 vs all-MiniLM-L6-v2: 256)
+1. Use a model with higher token limit (e.g., multilingual-e5-large: 512 vs all-mpnet-base-v2: 384)
 2. Reduce overlap percentage: `CHUNKING_OVERLAP_PERCENT=5`
 3. Accept the trade-off between chunk size and model compatibility
 
