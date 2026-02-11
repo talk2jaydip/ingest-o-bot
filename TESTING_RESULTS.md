@@ -22,31 +22,16 @@ Successfully implemented and tested the pluggable architecture for vector databa
 
 ---
 
-### ✅ Test 2: Architecture Components (ChromaDB + Hugging Face)
-**Status**: **PASSED** ✅
-**Tested By**: Automated tests + CLI integration test
-
-**Components Verified**:
-- ✅ **Hugging Face Embeddings**: Loaded successfully (sentence-transformers/all-MiniLM-L6-v2)
-  - 384 dimensions
-  - CPU-based processing
-  - Model downloaded and cached successfully
-
-- ✅ **ChromaDB Vector Store**: Initialized successfully
-  - Persistent mode (`./chroma_data`)
-  - Collection created
-  - Ready for document storage
-
-- ✅ **MarkItDown Processor**: Configured for offline mode
-  - No Azure Document Intelligence required
-  - Fully offline processing enabled
+### ✅ Test 2: Full End-to-End Pipeline (ChromaDB + Hugging Face - Offline)
+**Status**: **PASSED** ✅ ✅ ✅
+**Tested By**: Full CLI pipeline with real document
 
 **CLI Test Command**:
 ```bash
 python -m ingestor.cli --verbose --glob "C:\Work\ingest-o-bot\data\medical_who_report.pdf"
 ```
 
-**Configuration Used** (`.env.offline`):
+**Configuration Used** ([.env.offline](.env.offline)):
 ```env
 VECTOR_STORE_MODE=chromadb
 CHROMADB_COLLECTION_NAME=medical-documents
@@ -55,6 +40,7 @@ CHROMADB_PERSIST_DIR=./chroma_data
 EMBEDDINGS_MODE=huggingface
 HUGGINGFACE_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 HUGGINGFACE_DEVICE=cpu
+HUGGINGFACE_BATCH_SIZE=32
 
 AZURE_INPUT_MODE=local
 AZURE_LOCAL_GLOB=data/*.pdf
@@ -63,6 +49,39 @@ AZURE_ARTIFACTS_DIR=./artifacts_offline
 AZURE_OFFICE_EXTRACTOR_MODE=markitdown
 AZURE_MEDIA_DESCRIBER=disabled
 ```
+
+**Pipeline Results**:
+```
+✓ Successfully processed: medical_who_report.pdf
+✓ Pages processed: 12 pages
+✓ Chunks created: 12 chunks
+✓ Embeddings generated: 12 embeddings (384 dimensions)
+✓ Chunks indexed: 12 chunks to ChromaDB
+✓ Success rate: 100.0%
+✓ Processing time: 4.90 seconds
+```
+
+**Components Verified**:
+- ✅ **Document Extraction**: MarkItDown processed PDF offline successfully
+- ✅ **Chunking**: Created 12 semantic chunks with cross-page overlap
+- ✅ **Hugging Face Embeddings**: Generated 12 embeddings locally (no API calls)
+  - Model: sentence-transformers/all-MiniLM-L6-v2
+  - Dimensions: 384
+  - Device: CPU
+- ✅ **ChromaDB Vector Store**: Stored all chunks successfully
+  - Database: ./chroma_data/chroma.sqlite3 (536 KB)
+  - Collection: medical-documents
+  - Documents count: 12 (verified)
+- ✅ **Artifact Storage**: Saved locally to ./artifacts_offline
+- ✅ **Logging**: Complete logs saved to logs/run_20260211_135757
+
+**Verification**:
+```bash
+$ python -c "import chromadb; client = chromadb.PersistentClient(path='./chroma_data'); collection = client.get_collection('medical-documents'); print(f'Total documents: {collection.count()}')"
+Total documents: 12
+```
+
+**Zero Azure Services Used**: No API calls to Azure OpenAI, Azure AI Search, or Azure Document Intelligence
 
 ---
 
