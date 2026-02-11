@@ -91,6 +91,17 @@ class AzureOpenAIEmbeddingsProvider(EmbeddingsProvider):
         """
         return self._model_name
 
+    def get_max_seq_length(self) -> int:
+        """Get maximum sequence length for Azure OpenAI embedding models.
+
+        Azure OpenAI embedding models support up to 8191 tokens per text.
+        The batch limit is 8100 tokens total, but individual texts can be up to 8191.
+
+        Returns:
+            Maximum sequence length (8191 tokens)
+        """
+        return 8191
+
     async def close(self):
         """Close Azure OpenAI client connections.
 

@@ -403,19 +403,10 @@ class Pipeline:
                 self.config.azure_openai,
                 self.config.content_understanding
             )
-        
-        if self.chunker is None:
-            self.chunker = create_chunker(
-                max_chars=self.config.chunking.max_chars,
-                max_tokens=self.config.chunking.max_tokens,
-                overlap_percent=self.config.chunking.overlap_percent,
-                cross_page_overlap=self.config.chunking.cross_page_overlap,
-                disable_char_limit=self.config.chunking.disable_char_limit,
-                table_renderer=self.table_renderer
-            )
-        
-        # Initialize embeddings provider (new pluggable architecture)
+
+        # Initialize embeddings provider FIRST (new pluggable architecture)
         # Only initialize if using client-side embeddings
+        # This must happen before chunker initialization so we can get max_seq_length
         if self.embeddings_provider is None and not self.config.use_integrated_vectorization:
             logger.info("Initializing embeddings provider")
 
@@ -437,10 +428,32 @@ class Pipeline:
             logger.info(f"  Model: {self.embeddings_provider.get_model_name()}")
             logger.info(f"  Dimensions: {self.embeddings_provider.get_dimensions()}")
 
+            # Get max sequence length for dynamic chunking
+            try:
+                embedding_max_seq = self.embeddings_provider.get_max_seq_length()
+                logger.info(f"  Max sequence length: {embedding_max_seq} tokens")
+            except (NotImplementedError, ValueError) as e:
+                logger.warning(f"  Could not get max_seq_length from provider: {e}")
+                embedding_max_seq = None
+
             # For backward compatibility: Also set embeddings_gen to the same instance if Azure OpenAI
             if mode == EmbeddingsMode.AZURE_OPENAI and self.embeddings_gen is None:
                 # Extract the underlying generator from the wrapper
                 self.embeddings_gen = self.embeddings_provider._generator
+        else:
+            embedding_max_seq = None
+
+        # Initialize chunker with embedding model's max_seq_length for dynamic limits
+        if self.chunker is None:
+            self.chunker = create_chunker(
+                max_chars=self.config.chunking.max_chars,
+                max_tokens=self.config.chunking.max_tokens,
+                overlap_percent=self.config.chunking.overlap_percent,
+                cross_page_overlap=self.config.chunking.cross_page_overlap,
+                disable_char_limit=self.config.chunking.disable_char_limit,
+                table_renderer=self.table_renderer,
+                embedding_max_tokens=embedding_max_seq  # Pass embedding model limit
+            )
 
         # Initialize vector store (new pluggable architecture)
         if self.vector_store is None:

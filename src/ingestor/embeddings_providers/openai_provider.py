@@ -129,6 +129,16 @@ class OpenAIEmbeddingsProvider(EmbeddingsProvider):
         """
         return self.model_name
 
+    def get_max_seq_length(self) -> int:
+        """Get maximum sequence length for OpenAI embedding models.
+
+        OpenAI embedding models support up to 8191 tokens per text.
+
+        Returns:
+            Maximum sequence length (8191 tokens)
+        """
+        return 8191
+
     async def close(self):
         """Cleanup resources.
 
