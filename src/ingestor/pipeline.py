@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Optional
 
 from .artifact_storage import ArtifactStorage, BlobArtifactStorage, create_artifact_storage
-from .config import ArtifactsMode, DocumentAction
+from .config import ArtifactsMode, DocumentAction, VectorStoreMode, EmbeddingsMode
 from .chunker import LayoutAwareChunker, TextChunk, create_chunker
 from .config import PipelineConfig
 from .di_extractor import DocumentIntelligenceExtractor, ExtractedPage
 from .office_extractor import OfficeExtractor
 from .embeddings import EmbeddingsGenerator, create_embeddings_generator
+from .embeddings_provider import EmbeddingsProvider, create_embeddings_provider
 from .input_source import InputSource, create_input_source
 from .logging_utils import (
     get_logger,
@@ -41,6 +42,7 @@ from .page_splitter import PagePdfSplitter
 from .search_uploader import SearchUploader, create_search_uploader
 from .table_renderer import TableRenderer, create_table_renderer
 from .validator import PipelineValidator
+from .vector_store import VectorStore, create_vector_store
 
 logger = get_logger(__name__)
 
@@ -93,8 +95,15 @@ class Pipeline:
         self.table_renderer: Optional[TableRenderer] = None
         self.media_describer: Optional[MediaDescriber] = None
         self.chunker: Optional[LayoutAwareChunker] = None
+
+        # Legacy components (still supported for backward compatibility)
         self.embeddings_gen: Optional[EmbeddingsGenerator] = None
         self.search_uploader: Optional[SearchUploader] = None
+
+        # New pluggable components
+        self.embeddings_provider: Optional[EmbeddingsProvider] = None
+        self.vector_store: Optional[VectorStore] = None
+
         self.page_splitter: Optional[PagePdfSplitter] = None
 
         # Track page PDF URLs for citations (blob URLs to per-page PDFs)
@@ -394,7 +403,47 @@ class Pipeline:
                 self.config.azure_openai,
                 self.config.content_understanding
             )
-        
+
+        # Initialize embeddings provider FIRST (new pluggable architecture)
+        # Only initialize if using client-side embeddings
+        # This must happen before chunker initialization so we can get max_seq_length
+        if self.embeddings_provider is None and not self.config.use_integrated_vectorization:
+            logger.info("Initializing embeddings provider")
+
+            # Determine mode (backward compatible)
+            if self.config.embeddings_mode:
+                mode = self.config.embeddings_mode
+                config = self.config.embeddings_config
+            else:
+                # Legacy: default to Azure OpenAI
+                mode = EmbeddingsMode.AZURE_OPENAI
+                config = self.config.azure_openai
+
+            logger.info(f"  Mode: {mode.value}")
+
+            # Create provider
+            self.embeddings_provider = create_embeddings_provider(mode, config)
+
+            # Log details
+            logger.info(f"  Model: {self.embeddings_provider.get_model_name()}")
+            logger.info(f"  Dimensions: {self.embeddings_provider.get_dimensions()}")
+
+            # Get max sequence length for dynamic chunking
+            try:
+                embedding_max_seq = self.embeddings_provider.get_max_seq_length()
+                logger.info(f"  Max sequence length: {embedding_max_seq} tokens")
+            except (NotImplementedError, ValueError) as e:
+                logger.warning(f"  Could not get max_seq_length from provider: {e}")
+                embedding_max_seq = None
+
+            # For backward compatibility: Also set embeddings_gen to the same instance if Azure OpenAI
+            if mode == EmbeddingsMode.AZURE_OPENAI and self.embeddings_gen is None:
+                # Extract the underlying generator from the wrapper
+                self.embeddings_gen = self.embeddings_provider._generator
+        else:
+            embedding_max_seq = None
+
+        # Initialize chunker with embedding model's max_seq_length for dynamic limits
         if self.chunker is None:
             self.chunker = create_chunker(
                 max_chars=self.config.chunking.max_chars,
@@ -402,26 +451,36 @@ class Pipeline:
                 overlap_percent=self.config.chunking.overlap_percent,
                 cross_page_overlap=self.config.chunking.cross_page_overlap,
                 disable_char_limit=self.config.chunking.disable_char_limit,
-                table_renderer=self.table_renderer
+                table_renderer=self.table_renderer,
+                embedding_max_tokens=embedding_max_seq  # Pass embedding model limit
             )
-        
-        # Only initialize embeddings generator if using client-side embeddings
-        if self.embeddings_gen is None and not self.config.use_integrated_vectorization:
-            logger.info("Initializing client-side embeddings generator")
-            logger.info(f"  Endpoint: {self.config.azure_openai.endpoint}")
-            logger.info(f"  Deployment: {self.config.azure_openai.emb_deployment}")
-            logger.info(f"  Model: {self.config.azure_openai.emb_model_name}")
-            if self.config.azure_openai.emb_dimensions:
-                logger.info(f"  Dimensions: {self.config.azure_openai.emb_dimensions}")
-            logger.info(f"  Max concurrency: {self.config.azure_openai.max_concurrency}")
-            logger.info(f"  Max retries: {self.config.azure_openai.max_retries}")
-            self.embeddings_gen = create_embeddings_generator(self.config.azure_openai)
-        
-        if self.search_uploader is None:
-            self.search_uploader = create_search_uploader(
-                self.config.search,
+
+        # Initialize vector store (new pluggable architecture)
+        if self.vector_store is None:
+            logger.info("Initializing vector store")
+
+            # Determine mode (backward compatible)
+            if self.config.vector_store_mode:
+                mode = self.config.vector_store_mode
+                config = self.config.vector_store_config
+            else:
+                # Legacy: default to Azure Search
+                mode = VectorStoreMode.AZURE_SEARCH
+                config = self.config.search
+
+            logger.info(f"  Mode: {mode.value}")
+
+            # Create vector store
+            self.vector_store = create_vector_store(
+                mode,
+                config,
                 max_batch_concurrency=self.config.performance.max_batch_upload_concurrency
             )
+
+            # For backward compatibility: Also set search_uploader to the same instance if Azure Search
+            if mode == VectorStoreMode.AZURE_SEARCH and self.search_uploader is None:
+                # Extract the underlying uploader from the wrapper
+                self.search_uploader = self.vector_store._uploader
 
         # Initialize page splitter for per-page PDF citations (ALWAYS for PDFs)
         # Per-page PDFs are stored in blob storage for citation URLs
@@ -637,7 +696,11 @@ class Pipeline:
 
             # Collect deletion tasks
             delete_tasks = []
-            delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
+            # Use pluggable vector store if available, otherwise use legacy search_uploader
+            if self.vector_store:
+                delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
+            elif self.search_uploader:
+                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
             if self.clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                 delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -862,7 +925,11 @@ class Pipeline:
             try:
                 # Delete chunks and artifacts in parallel
                 delete_tasks = []
-                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
+                # Use pluggable vector store if available, otherwise use legacy search_uploader
+                if self.vector_store:
+                    delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
+                elif self.search_uploader:
+                    delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
                 if clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                     delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -915,7 +982,13 @@ class Pipeline:
         WARNING: This will delete ALL documents in the index!
         """
         logger.warning("Removing ALL documents from search index")
-        count = await self.search_uploader.delete_all_documents()
+        # Use pluggable vector store if available, otherwise use legacy search_uploader
+        if self.vector_store:
+            count = await self.vector_store.delete_all_documents()
+        elif self.search_uploader:
+            count = await self.search_uploader.delete_all_documents()
+        else:
+            raise RuntimeError("No vector store configured!")
         logger.info(f"Removed {count} documents from index")
     
     async def _extract_text_file(
@@ -1068,23 +1141,30 @@ class Pipeline:
                     logger.error(f"Failed to upload full document {filename}: {e}")
                     raise RuntimeError(f"Failed to upload document to blob storage: {e}") from e
             else:
-                # No blob storage - construct URL from environment config
+                # No blob storage - try to construct URL from environment config
                 logger.info(f"Constructing blob URL for {filename} from environment config (not uploading)")
                 constructed_url = self._construct_blob_url_from_config(filename)
                 if constructed_url:
                     self.full_document_urls[filename] = constructed_url
                     logger.info(f"✓ Constructed blob URL: {constructed_url}")
                 else:
-                    # No way to construct URL - configuration error
-                    logger.error(
-                        f"❌ Cannot construct blob URL for {filename}: Missing blob storage configuration. "
-                        f"storage_url requires blob URLs. "
-                        f"Please configure AZURE_STORAGE_ACCOUNT and container settings."
+                    # No blob storage config - use local file URL for offline mode
+                    # This allows ChromaDB and other vector stores to work without Azure blob storage
+                    logger.warning(
+                        f"⚠️  No blob storage configured for {filename}. "
+                        f"Using local file URL (offline mode). "
+                        f"Note: Azure AI Search requires blob URLs, but other vector stores like ChromaDB can work with file:// URLs."
                     )
-                    raise ValueError(
-                        "Blob storage configuration required for storage_url. "
-                        "Set AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_CONTAINER or blob container settings."
-                    )
+                    # Use the source_url (which is already a file path) or construct a file:// URL
+                    if source_url.startswith('file://'):
+                        self.full_document_urls[filename] = source_url
+                    else:
+                        # Convert to file:// URL
+                        import pathlib
+                        abs_path = pathlib.Path(source_url).resolve()
+                        file_url = abs_path.as_uri()
+                        self.full_document_urls[filename] = file_url
+                    logger.info(f"✓ Using local file URL: {self.full_document_urls[filename]}")
 
     async def _upload_page_pdf(
         self,
@@ -1595,48 +1675,90 @@ class Pipeline:
         """Generate embeddings for chunks using client-side embedding generation.
 
         This method is only called when NOT using integrated vectorization.
-        Embeddings are generated using Azure OpenAI with the configured model and dimensions.
+        Embeddings are generated using the configured embeddings provider (Azure OpenAI, Hugging Face, etc.).
         """
         logger.info(f"Generating client-side embeddings for {len(chunk_docs)} chunks")
-        logger.info(f"  Model: {self.embeddings_gen.model_name}")
-        logger.info(f"  Deployment: {self.embeddings_gen.deployment}")
-        if self.embeddings_gen.dimensions:
-            logger.info(f"  Dimensions: {self.embeddings_gen.dimensions}")
 
-        # Extract texts
-        texts = [doc.chunk.text for doc in chunk_docs]
+        # Use new pluggable architecture
+        if self.embeddings_provider:
+            logger.info(f"  Provider: {self.embeddings_provider.get_model_name()}")
+            logger.info(f"  Dimensions: {self.embeddings_provider.get_dimensions()}")
 
-        # Generate embeddings in batches
-        embeddings = await self.embeddings_gen.generate_embeddings_batch(texts)
+            # Extract texts
+            texts = [doc.chunk.text for doc in chunk_docs]
 
-        # Assign embeddings to chunks
-        for chunk_doc, embedding in zip(chunk_docs, embeddings):
-            chunk_doc.chunk.embedding = embedding
+            # Generate embeddings in batches
+            embeddings = await self.embeddings_provider.generate_embeddings_batch(texts)
 
-        # Verify embeddings were generated
-        if embeddings and len(embeddings) > 0:
-            embedding_dim = len(embeddings[0])
-            logger.info(f"Successfully generated {len(embeddings)} embeddings (dimension: {embedding_dim})")
+            # Assign embeddings to chunks
+            for chunk_doc, embedding in zip(chunk_docs, embeddings):
+                chunk_doc.chunk.embedding = embedding
+
+            # Verify embeddings were generated
+            if embeddings and len(embeddings) > 0:
+                embedding_dim = len(embeddings[0])
+                logger.info(f"Successfully generated {len(embeddings)} embeddings (dimension: {embedding_dim})")
+            else:
+                logger.warning("No embeddings were generated!")
+
+        # Fallback to legacy embeddings_gen (should not happen with new initialization)
+        elif self.embeddings_gen:
+            logger.info(f"  Model: {self.embeddings_gen.model_name}")
+            logger.info(f"  Deployment: {self.embeddings_gen.deployment}")
+            if self.embeddings_gen.dimensions:
+                logger.info(f"  Dimensions: {self.embeddings_gen.dimensions}")
+
+            # Extract texts
+            texts = [doc.chunk.text for doc in chunk_docs]
+
+            # Generate embeddings in batches
+            embeddings = await self.embeddings_gen.generate_embeddings_batch(texts)
+
+            # Assign embeddings to chunks
+            for chunk_doc, embedding in zip(chunk_docs, embeddings):
+                chunk_doc.chunk.embedding = embedding
+
+            # Verify embeddings were generated
+            if embeddings and len(embeddings) > 0:
+                embedding_dim = len(embeddings[0])
+                logger.info(f"Successfully generated {len(embeddings)} embeddings (dimension: {embedding_dim})")
+            else:
+                logger.warning("No embeddings were generated!")
         else:
-            logger.warning("No embeddings were generated!")
+            raise RuntimeError("No embeddings provider configured!")
     
     async def index_chunks(self, chunk_docs: list[ChunkDocument]) -> int:
-        """Upload chunks to Azure AI Search.
+        """Upload chunks to vector store.
 
         Returns:
             Number of chunks successfully indexed.
         """
-        logger.info(f"Indexing {len(chunk_docs)} chunks to Azure AI Search")
+        logger.info(f"Indexing {len(chunk_docs)} chunks to vector store")
 
         # Pass include_embeddings based on configuration
         include_embeddings = not self.config.use_integrated_vectorization
-        count = await self.search_uploader.upload_documents(chunk_docs, include_embeddings=include_embeddings)
+
+        # Use new pluggable architecture
+        if self.vector_store:
+            count = await self.vector_store.upload_documents(chunk_docs, include_embeddings=include_embeddings)
+        # Fallback to legacy search_uploader (should not happen with new initialization)
+        elif self.search_uploader:
+            count = await self.search_uploader.upload_documents(chunk_docs, include_embeddings=include_embeddings)
+        else:
+            raise RuntimeError("No vector store configured!")
 
         logger.info(f"Indexed {count} chunks")
         return count
     
     async def close(self):
         """Close all async resources."""
+        # Close new pluggable components
+        if self.embeddings_provider:
+            await self.embeddings_provider.close()
+        if self.vector_store:
+            await self.vector_store.close()
+
+        # Close legacy components (for backward compatibility)
         if self.embeddings_gen:
             await self.embeddings_gen.close()
         if self.search_uploader:

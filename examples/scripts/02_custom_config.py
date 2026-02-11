@@ -1,4 +1,17 @@
-"""Custom configuration example without environment variables."""
+"""Custom configuration example without environment variables.
+
+This example shows how to create configuration programmatically
+without relying on environment variables. This is useful for:
+- Programmatic control over configuration
+- Testing different configurations
+- Building configuration UI
+
+Requirements:
+    - Fill in your actual credentials in the code below
+
+Usage:
+    python examples/scripts/02_custom_config.py
+"""
 
 import asyncio
 from ingestor import Pipeline, create_config
@@ -8,9 +21,12 @@ from ingestor.config import InputMode, TableRenderMode
 async def main():
     """Create and run pipeline with explicit configuration."""
     print("🚀 Creating pipeline with custom configuration...")
+    print("📝 Note: This example uses create_config() helper")
+    print("   For full control, see commented PipelineConfig below")
     print()
 
-    # Option 1: Use create_config helper
+    # Option 1: Use create_config helper (simplest)
+    # This loads base configuration from .env and overrides specific values
     config = create_config(
         input_glob="documents/**/*.pdf",
         azure_search_index="my-custom-index",

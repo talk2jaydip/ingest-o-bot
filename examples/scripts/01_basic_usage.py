@@ -1,4 +1,17 @@
-"""Basic usage example for ingestor library."""
+"""Basic usage example for ingestor library.
+
+This example demonstrates the simplest way to use ingestor:
+- Load configuration from .env file
+- Process documents with a glob pattern
+- Display results
+
+Requirements:
+    - .env file with configuration (see envs/.env.example)
+    - Documents in ./documents/ directory
+
+Usage:
+    python examples/scripts/01_basic_usage.py
+"""
 
 import asyncio
 from ingestor import run_pipeline
@@ -10,8 +23,8 @@ async def main():
     print("📄 Processing documents from environment configuration")
     print()
 
-    # Process documents (requires .env with Azure credentials)
-    # This will use configuration from your .env file
+    # Process documents (configuration loaded from .env)
+    # Works with any vector store and embeddings provider configured in .env
     status = await run_pipeline(input_glob="documents/*.pdf")
 
     # Print results

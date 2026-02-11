@@ -12,11 +12,102 @@
 - 📄 **Multi-format support**: PDF, DOCX, PPTX, TXT, MD, HTML, JSON, CSV
 - 🧠 **Azure Document Intelligence**: Extract tables, figures, and layout information
 - ✂️ **Layout-aware chunking**: Intelligent text segmentation respecting document structure
-- 🔢 **Client-side embeddings**: Generate embeddings with Azure OpenAI before upload
+- 🎯 **Dynamic chunking**: Automatic adjustment based on embedding model token limits
+- 🔢 **Pluggable embeddings**: Azure OpenAI, Hugging Face, Cohere, or OpenAI
+- 🗄️ **Pluggable vector stores**: Azure AI Search or ChromaDB
 - 🚀 **Direct index upload**: No skillsets or indexers required
 - 🎨 **Table rendering**: Preserve table structure in Markdown or HTML
 - 🖼️ **Figure captioning**: Optional AI-powered image descriptions
 - ☁️ **Flexible storage**: Local files or Azure Blob Storage for input and artifacts
+- 🔌 **Mix & Match**: Combine any vector store with any embedding provider
+
+---
+
+## 🔌 Pluggable Architecture
+
+Ingestor now supports multiple vector databases and embedding providers through a pluggable architecture. Mix and match components to fit your needs!
+
+### Vector Stores
+
+| Store | Type | Offline | Features |
+|-------|------|---------|----------|
+| **Azure AI Search** | Cloud | ❌ | Enterprise SLA, hybrid search, integrated vectorization |
+| **ChromaDB** | Local/Self-hosted | ✅ | Persistent, in-memory, or client/server modes |
+
+### Embeddings Providers
+
+| Provider | Type | Languages | Cost |
+|----------|------|-----------|------|
+| **Azure OpenAI** | Cloud | English++ | $$$ |
+| **Hugging Face** | Local | 100+ | Free |
+| **Cohere** | Cloud | 100+ | $$ |
+| **OpenAI** | Cloud | English++ | $$-$$$ |
+
+### Example Configurations
+
+**Fully Offline (ChromaDB + Hugging Face):**
+```bash
+VECTOR_STORE_MODE=chromadb
+CHROMADB_PERSIST_DIR=./chroma_db
+EMBEDDINGS_MODE=huggingface
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en  # Default: 768 dims, 8192 tokens
+```
+
+**Hybrid Cloud/Local (Azure Search + Hugging Face):**
+```bash
+VECTOR_STORE_MODE=azure_search
+EMBEDDINGS_MODE=huggingface
+```
+
+**Cloud Optimized (Azure Search + Cohere):**
+```bash
+VECTOR_STORE_MODE=azure_search
+EMBEDDINGS_MODE=cohere
+COHERE_API_KEY=your-key
+```
+
+📖 **[See all configurations →](docs/configuration_examples.md)**
+
+### Dynamic Chunking
+
+The pipeline now features **automatic chunk size adjustment** based on your embedding model's token limit:
+
+- 🎯 Prevents truncation and information loss
+- 📊 15% safety buffer + overlap allowance
+- ⚠️ Clear warning messages when adjustments occur
+- 🔧 Works with any embedding model automatically
+
+**Example:**
+```
+Model: all-mpnet-base-v2 (384 token limit)
+Config: CHUNKING_MAX_TOKENS=500
+Result: Automatically reduced to 288 tokens (with 15% buffer + 10% overlap)
+```
+
+Generic parameter names supported alongside Azure-prefixed ones:
+```bash
+# Generic (recommended)
+CHUNKING_MAX_TOKENS=500
+CHUNKING_MAX_CHARS=2000
+CHUNKING_OVERLAP_PERCENT=10
+
+# Azure-prefixed (backward compatibility)
+AZURE_CHUNKING_MAX_TOKENS=500
+AZURE_CHUNKING_MAX_CHARS=2000
+AZURE_CHUNKING_OVERLAP_PERCENT=10
+```
+
+See [Embeddings Providers Guide](docs/embeddings_providers.md#dynamic-chunking-feature) for details.
+
+### Optional Dependencies
+
+```bash
+# For ChromaDB support
+pip install -r requirements-chromadb.txt
+
+# For Hugging Face, Cohere, OpenAI embeddings
+pip install -r requirements-embeddings.txt
+```
 
 ---
 
@@ -163,6 +254,10 @@ ingestor --setup-index --glob "documents/*.pdf"
 # Process single file
 ingestor --pdf "document.pdf"
 
+# Use specific environment file (test different configurations)
+ingestor --env envs/.env.chromadb.example --glob "documents/*.pdf"
+ingestor --env envs/.env.cohere.example --glob "documents/*.pdf"
+
 # Delete index
 ingestor --delete-index
 
@@ -171,6 +266,23 @@ ingestor --check-index
 ```
 
 Run `ingestor --help` for all options.
+
+### Testing Different Configurations
+
+Use the `--env` flag to easily test different vector stores and embedding providers:
+
+```bash
+# Fully offline (ChromaDB + Hugging Face)
+ingestor --env envs/.env.chromadb.example --glob "docs/*.pdf"
+
+# Cloud optimized (Azure Search + Cohere)
+ingestor --env envs/.env.cohere.example --glob "docs/*.pdf"
+
+# Hybrid (Azure Search + local embeddings)
+ingestor --env envs/.env.hybrid.example --glob "docs/*.pdf"
+```
+
+This makes it easy to compare performance, cost, and quality across different configurations without modifying your main `.env` file.
 
 ---
 
@@ -207,6 +319,9 @@ The UI will open at http://localhost:7860 with features for:
 
 ### Configuration
 - **[Configuration Guide](docs/guides/CONFIGURATION.md)** - Detailed configuration options
+- **[Vector Stores Guide](docs/vector_stores.md)** - Azure Search, ChromaDB, and more
+- **[Embeddings Providers Guide](docs/embeddings_providers.md)** - Azure OpenAI, Hugging Face, Cohere, OpenAI
+- **[Configuration Examples](docs/configuration_examples.md)** - All combinations and use cases
 - **[Environment & Secrets](docs/guides/ENVIRONMENT_AND_SECRETS.md)** - Managing multiple environments
 - **[Index Deployment Guide](docs/guides/INDEX_DEPLOYMENT_GUIDE.md)** - Azure Search index setup
 - **[Logging Guide](docs/LOGGING_GUIDE.md)** - Centralized logging system and best practices
@@ -217,6 +332,8 @@ The UI will open at http://localhost:7860 with features for:
 
 ### Additional Resources
 - **[Examples](examples/)** - Python scripts and Jupyter notebooks
+  - [Offline ChromaDB + Hugging Face](examples/offline_chromadb_huggingface.py) - Fully offline setup
+  - [Azure Search + Cohere](examples/azure_search_cohere.py) - Cloud setup with Cohere
 - **[Technical References](docs/reference/)** - 21 in-depth technical documents
 
 ---
@@ -232,9 +349,9 @@ Extract Pages (Azure DI / MarkItDown)
     ↓
 Chunk Text (Layout-aware)
     ↓
-Generate Embeddings (Azure OpenAI)
+Generate Embeddings (Pluggable: Azure OpenAI / Hugging Face / Cohere / OpenAI)
     ↓
-Upload to Azure Search
+Upload to Vector Store (Pluggable: Azure Search / ChromaDB)
 ```
 
 ### Key Components
@@ -243,7 +360,8 @@ Upload to Azure Search
 - **[DI Extractor](src/ingestor/di_extractor.py)** - Azure Document Intelligence integration
 - **[Office Extractor](src/ingestor/office_extractor.py)** - Office document processing
 - **[Chunker](src/ingestor/chunker.py)** - Layout-aware tokenization
-- **[Embeddings](src/ingestor/embeddings.py)** - Embedding generation
+- **[Vector Store](src/ingestor/vector_store.py)** - Pluggable vector database abstraction (Azure Search, ChromaDB)
+- **[Embeddings Provider](src/ingestor/embeddings_provider.py)** - Pluggable embeddings abstraction (Azure OpenAI, Hugging Face, Cohere, OpenAI)
 - **[Index](src/ingestor/index.py)** - Azure Search index management
 - **[Config](src/ingestor/config.py)** - Configuration handling
 

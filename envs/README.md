@@ -1,23 +1,87 @@
-# Environment Configuration Scenarios
+# Environment Configuration Examples
 
-This directory contains pre-configured environment templates for different use cases. Each scenario is optimized for specific workflows and deployment patterns.
+This directory contains pre-configured environment templates demonstrating the pluggable architecture with different vector stores and embeddings providers.
+
+## 🎯 NEW: Complete Scenario Guide
+
+**See [SCENARIOS_GUIDE.md](SCENARIOS_GUIDE.md) for comprehensive scenario examples with:**
+- Complete end-to-end configurations (Azure Full Stack, Cost-Optimized, Offline, etc.)
+- Cost estimates and performance benchmarks
+- Use case recommendations
+- Setup instructions
+- Feature comparison matrices
+
+## 🔌 Pluggable Architecture
+
+Ingestor supports mixing and matching different vector stores and embeddings providers:
+
+**Vector Stores:** Azure AI Search | ChromaDB
+**Embeddings:** Azure OpenAI | Hugging Face | Cohere | OpenAI
 
 ## Quick Start
 
+### Option 1: Use Complete Scenarios (Recommended)
 ```bash
-# Copy a scenario to .env
-cp envs/env.scenario1-local-dev.example .env
+# Choose a complete scenario configuration
+cp envs/.env.scenario-azure-openai-default.example .env     # Azure full stack
+cp envs/.env.scenario-cost-optimized.example .env           # Cost-optimized hybrid
+cp .env.offline .env                                         # Fully offline
+cp envs/.env.scenario-development.example .env              # Local development
+cp envs/.env.scenario-multilingual.example .env             # Multilingual (100+ languages)
+cp envs/.env.scenario-azure-cohere.example .env             # Azure + Cohere API
 
-# Edit with your credentials
-nano .env  # or your preferred editor
-
-# Run the pipeline
-prepdocs --setup-index --glob "documents/**/*.pdf"
+# Install dependencies and run
+python -m ingestor.cli --setup-index  # If using Azure Search
+python -m ingestor.cli
 ```
 
-## Scenario Categories
+### Option 2: Mix & Match Components
+```bash
+# Choose base configuration
+cp envs/.env.chromadb.example .env
 
-There are **two types** of scenarios:
+# For offline setup (no Azure needed):
+pip install -r requirements-chromadb.txt
+pip install -r requirements-embeddings.txt
+
+# Run the pipeline
+python -m ingestor.cli
+```
+
+## Configuration Types
+
+This directory contains **three types** of configuration files:
+
+1. **Complete Scenarios** (`.env.scenario-*.example`): End-to-end configurations ready to use
+2. **Component Examples** (`.env.*.example`): Focus on specific vector store/embedding combinations
+3. **Input/Output Scenarios** (`env.scenario*.example`): Focus on data flow patterns
+4. **Office Processing Scenarios** (`env.office-scenario*.example`): Focus on document extraction
+
+### Complete Scenarios (NEW - Recommended)
+
+| File | Vector Store | Embeddings | Cost | Best For |
+|------|--------------|------------|------|----------|
+| `.env.scenario-azure-openai-default.example` | Azure Search | Azure OpenAI | $$$ | Enterprise production |
+| `.env.scenario-cost-optimized.example` | Azure Search | Hugging Face | $$ | High-volume cost optimization |
+| `.env.scenario-development.example` | ChromaDB | Hugging Face | Free | Local development |
+| `.env.scenario-multilingual.example` | ChromaDB/Azure | Hugging Face | Free-$$ | 100+ languages |
+| `.env.scenario-azure-cohere.example` | Azure Search | Cohere API | $$-$$$ | Cloud multilingual |
+| `../.env.offline` | ChromaDB | Hugging Face | Free | Air-gapped/offline |
+
+**See [SCENARIOS_GUIDE.md](SCENARIOS_GUIDE.md) for detailed information.**
+
+### Component Examples
+
+| File | Vector Store | Embeddings | Description |
+|------|--------------|------------|-------------|
+| `.env.example` | Azure Search | Azure OpenAI | Classic Azure setup |
+| `.env.chromadb.example` | ChromaDB | Hugging Face | Fully offline |
+| `.env.hybrid.example` | Azure Search | Hugging Face | Cost-optimized |
+| `.env.cohere.example` | Azure Search | Cohere | Cloud API alternative |
+
+## Legacy Scenario Categories
+
+There are also **granular scenarios** for specific aspects:
 
 1. **Input/Output Scenarios** (1-5): Define where documents come from and where artifacts go
 2. **Office Processing Scenarios** (Office 1-3): Define how Office documents (DOCX, PPTX, DOC) are processed
@@ -501,10 +565,10 @@ AZURE_OFFICE_VERBOSE=true
 
 ```bash
 # 1. Validate environment
-python -c "from prepdocslib_minimal.config import load_config; print('Config OK')"
+python -c "from ingestor.config import PipelineConfig; print('Config OK')"
 
 # 2. Test with single file
-prepdocs --pdf "samples/test.pdf"
+ingestor --pdf "samples/test.pdf"
 
 # 3. Test index operations
 prepdocs --setup-index --index-only
@@ -519,7 +583,7 @@ prepdocs --setup-index --glob "samples/**/*.pdf"
 ```bash
 # Make sure you copied from envs/ to root
 ls -la .env  # Should exist in project root
-pwd          # Should be in prepdocslib_minimal/
+pwd          # Should be in ingest-o-bot/ (or your project directory)
 ```
 
 ### Credentials Not Working

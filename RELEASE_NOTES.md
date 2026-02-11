@@ -159,7 +159,7 @@ If you're migrating from **prepdocslib-minimal**, see the [Migration Guide](MIGR
 
 **Quick migration:**
 ```bash
-pip uninstall prepdocslib-minimal
+pip uninstall prepdocslib-minimal  # If upgrading from old version
 pip install ingestor
 # Update imports: from prepdocslib_minimal → from ingestor
 ```

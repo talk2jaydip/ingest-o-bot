@@ -1,0 +1,4 @@
+# ChromaDB - Local Vector Store
+# Install: pip install -r requirements-chromadb.txt
+
+chromadb>=0.4.22  # Open-source embedding database for offline/local storage

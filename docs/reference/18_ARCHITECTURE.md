@@ -2,12 +2,12 @@
 
 ## Overview
 
-ingestor is a streamlined document ingestion pipeline that:
+ingestor is a flexible document ingestion pipeline with pluggable architecture that:
 1. Reads documents from local filesystem or Azure Blob Storage
-2. Extracts content using Azure Document Intelligence
-3. Chunks text with layout awareness
-4. Generates embeddings using Azure OpenAI
-5. Uploads directly to Azure AI Search (no indexers/skillsets)
+2. Extracts content using Azure Document Intelligence or MarkItDown
+3. Chunks text with layout awareness and dynamic token adjustment
+4. Generates embeddings using pluggable providers (Azure OpenAI, Hugging Face, Cohere, OpenAI)
+5. Uploads to pluggable vector stores (Azure AI Search, ChromaDB) - no indexers/skillsets required
 
 ---
 
@@ -16,14 +16,15 @@ ingestor is a streamlined document ingestion pipeline that:
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Input Source  │────▶│   DI Extractor   │────▶│     Chunker     │
-│ (Local / Blob)  │     │ (Doc Intelligence)│     │(Layout-Aware)   │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
+│ (Local / Blob)  │     │(Doc Intelligence)│     │  (Dynamic +     │
+└─────────────────┘     │   / MarkItDown   │     │  Layout-Aware)  │
+                        └──────────────────┘     └─────────────────┘
                                                           │
                         ┌──────────────────┐              ▼
-                        │  Search Uploader │◀────┌─────────────────┐
-                        │  (Direct Upload) │     │   Embeddings    │
-                        └──────────────────┘     │ (Azure OpenAI)  │
-                                                 └─────────────────┘
+                        │  Vector Store    │◀────┌─────────────────┐
+                        │ (Azure Search /  │     │   Embeddings    │
+                        │    ChromaDB)     │     │  (Pluggable)    │
+                        └──────────────────┘     └─────────────────┘
 ```
 
 ---
@@ -51,8 +52,12 @@ ingestor is a streamlined document ingestion pipeline that:
 | Module | Responsibility |
 |--------|----------------|
 | `di_extractor.py` | Extracts content via Document Intelligence |
-| `chunker.py` | Splits text into chunks |
-| `embeddings.py` | Generates text embeddings |
+| `office_extractor.py` | Extracts content via MarkItDown |
+| `chunker.py` | Splits text into chunks with dynamic adjustment |
+| `embeddings_provider.py` | Abstract interface for embeddings providers |
+| `embeddings_providers/` | Implementations: Azure OpenAI, Hugging Face, Cohere, OpenAI |
+| `vector_store.py` | Abstract interface for vector stores |
+| `vector_stores/` | Implementations: Azure AI Search, ChromaDB |
 | `table_renderer.py` | Renders tables as text |
 | `media_describer.py` | Describes images with GPT-4o |
 | `page_splitter.py` | Splits PDFs into per-page files |
@@ -119,12 +124,15 @@ Unlike the full prepdocslib, this library:
 
 ### Dual Environment Variable Support
 
-Supports both naming conventions:
+Supports both naming conventions for backward compatibility:
 ```python
-endpoint = get_env("MINI_SEARCH_ENDPOINT", ["AZURE_SEARCH_SERVICE"])
+# Example: Both are supported
+AZURE_SEARCH_SERVICE=your-service
+# or
+AZURE_SEARCH_ENDPOINT=https://your-service.search.windows.net
 ```
 
-This allows gradual migration without breaking existing setups.
+Generic parameter names (without AZURE_ prefix) are also supported for chunking and some other settings.
 
 ### Async Throughout
 
@@ -201,6 +209,6 @@ async with semaphore:
 ```
 
 Configurable via:
-- `MINI_DI_MAX_CONCURRENCY` (default: 3)
-- `MINI_AOAI_MAX_CONCURRENCY` (default: 5)
+- `AZURE_DI_MAX_CONCURRENCY` (default: 3)
+- `AZURE_OPENAI_MAX_CONCURRENCY` (default: 5)
 

@@ -6,7 +6,7 @@ The `ingestor` library supports two modes for generating embeddings for your doc
 
 | Feature | Client-Side Embeddings | Integrated Vectorization |
 |---------|------------------------|--------------------------|
-| **Configuration** | `MINI_USE_INTEGRATED_VECTORIZATION=false` | `MINI_USE_INTEGRATED_VECTORIZATION=true` |
+| **Configuration** | `AZURE_USE_INTEGRATED_VECTORIZATION=false` | `AZURE_USE_INTEGRATED_VECTORIZATION=true` |
 | **Embedding Generation** | Your machine (before upload) | Azure Search (after upload) |
 | **OpenAI API Calls** | You manage and pay | Azure Search manages |
 | **Upload Speed** | Slower (must generate embeddings first) | Faster (upload immediately) |
@@ -20,7 +20,7 @@ The `ingestor` library supports two modes for generating embeddings for your doc
 
 **Configuration:**
 ```bash
-MINI_USE_INTEGRATED_VECTORIZATION=false
+AZURE_USE_INTEGRATED_VECTORIZATION=false
 ```
 
 **How it works:**
@@ -58,7 +58,7 @@ MINI_USE_INTEGRATED_VECTORIZATION=false
 
 **Configuration:**
 ```bash
-MINI_USE_INTEGRATED_VECTORIZATION=true
+AZURE_USE_INTEGRATED_VECTORIZATION=true
 ```
 
 **How it works:**
@@ -99,12 +99,12 @@ MINI_USE_INTEGRATED_VECTORIZATION=true
 
 **Client-Side:**
 ```bash
-MINI_USE_INTEGRATED_VECTORIZATION=false
+AZURE_USE_INTEGRATED_VECTORIZATION=false
 ```
 
 **Integrated:**
 ```bash
-MINI_USE_INTEGRATED_VECTORIZATION=true
+AZURE_USE_INTEGRATED_VECTORIZATION=true
 ```
 
 ### Option 2: Test Both Modes
@@ -114,14 +114,14 @@ You can create separate environment files:
 **env.client-side:**
 ```bash
 # Use client-side embeddings
-MINI_USE_INTEGRATED_VECTORIZATION=false
+AZURE_USE_INTEGRATED_VECTORIZATION=false
 # ... other config ...
 ```
 
 **env.integrated:**
 ```bash
 # Use integrated vectorization
-MINI_USE_INTEGRATED_VECTORIZATION=true
+AZURE_USE_INTEGRATED_VECTORIZATION=true
 # ... other config ...
 ```
 
@@ -247,7 +247,7 @@ Your index must have a **vectorizer** configured (already present in `my_index.j
 **1. Test with client-side embeddings:**
 ```bash
 # env.test
-MINI_USE_INTEGRATED_VECTORIZATION=false
+AZURE_USE_INTEGRATED_VECTORIZATION=false
 
 # Run
 python -m cli
@@ -257,7 +257,7 @@ python -m cli
 **2. Test with integrated vectorization:**
 ```bash
 # env.test
-MINI_USE_INTEGRATED_VECTORIZATION=true
+AZURE_USE_INTEGRATED_VECTORIZATION=true
 
 # Run
 python -m cli

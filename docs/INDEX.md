@@ -41,6 +41,14 @@ Located in `docs/guides/`:
 | 10 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
 | 11 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
 
+### Pluggable Architecture
+
+| # | Guide | Description |
+|---|-------|-------------|
+| 1 | [Vector Stores Guide](vector_stores.md) | ⭐ **Choose your vector database (Azure Search, ChromaDB)** |
+| 2 | [Embeddings Providers Guide](embeddings_providers.md) | ⭐ **Choose your embedding model (Azure OpenAI, Hugging Face, Cohere, OpenAI)** |
+| 3 | [Configuration Examples](configuration_examples.md) | ⭐ **All combinations and use cases (8 ready-to-use configurations)** |
+
 ---
 
 ## 📚 Technical Reference
@@ -240,7 +248,7 @@ python -m ingestor.cli --action remove --glob "old.pdf"
 
 - **Multi-Format Support**: PDF, TXT, MD, HTML, JSON, CSV
 - **Azure Integration**: Document Intelligence, OpenAI, AI Search
-- **Smart Chunking**: Layout-aware with semantic overlap (10% default) and offset tracking
+- **Smart Chunking**: Token-first layout-aware chunking with semantic overlap (10% default) and dynamic adjustment
 - **Citation System**: Per-page PDF linking
 - **Document Actions**: Add, Remove, RemoveAll
 - **Retry Logic**: Configurable retries (default: 3)

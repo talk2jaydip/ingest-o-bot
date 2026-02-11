@@ -48,6 +48,23 @@ class OfficeExtractorMode(str, Enum):
     HYBRID = "hybrid"          # Azure DI first, fallback to MarkItDown (recommended)
 
 
+class VectorStoreMode(str, Enum):
+    """Vector database mode."""
+    AZURE_SEARCH = "azure_search"  # Azure AI Search (default)
+    CHROMADB = "chromadb"          # ChromaDB (local/cloud)
+    PINECONE = "pinecone"          # Pinecone (cloud-based)
+    WEAVIATE = "weaviate"          # Weaviate
+    QDRANT = "qdrant"              # Qdrant
+
+
+class EmbeddingsMode(str, Enum):
+    """Embeddings provider mode."""
+    AZURE_OPENAI = "azure_openai"  # Azure OpenAI (default)
+    HUGGINGFACE = "huggingface"    # Hugging Face sentence-transformers (local)
+    COHERE = "cohere"              # Cohere embeddings API
+    OPENAI = "openai"              # OpenAI embeddings API (non-Azure)
+
+
 @dataclass
 class AzureCredentials:
     """Azure Service Principal credentials for Key Vault and other services."""
@@ -110,6 +127,60 @@ class SearchConfig:
             endpoint=endpoint,
             index_name=index_name,
             api_key=api_key
+        )
+
+
+@dataclass
+class ChromaDBConfig:
+    """ChromaDB vector store configuration.
+
+    Supports three deployment modes:
+    1. Persistent: Local disk storage (persist_directory set)
+    2. In-memory: Ephemeral storage (persist_directory=None, host=None)
+    3. Client/server: Remote ChromaDB server (host and port set)
+    """
+    collection_name: str = "documents"
+
+    # Local persistent or in-memory mode
+    persist_directory: Optional[str] = None  # None = in-memory
+
+    # Client/server mode
+    host: Optional[str] = None
+    port: Optional[int] = None
+
+    # Optional: Authentication for client/server mode
+    auth_token: Optional[str] = None
+
+    # Performance tuning
+    batch_size: int = 1000
+
+    @classmethod
+    def from_env(cls) -> "ChromaDBConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            CHROMADB_COLLECTION_NAME: Collection name (default: "documents")
+            CHROMADB_PERSIST_DIR: Local storage directory (optional)
+            CHROMADB_HOST: Server host for client/server mode (optional)
+            CHROMADB_PORT: Server port (default: 8000)
+            CHROMADB_AUTH_TOKEN: Authentication token (optional)
+            CHROMADB_BATCH_SIZE: Upload batch size (default: 1000)
+        """
+        collection_name = os.getenv("CHROMADB_COLLECTION_NAME", "documents")
+        persist_directory = os.getenv("CHROMADB_PERSIST_DIR")
+        host = os.getenv("CHROMADB_HOST")
+        port_str = os.getenv("CHROMADB_PORT")
+        port = int(port_str) if port_str else None
+        auth_token = os.getenv("CHROMADB_AUTH_TOKEN")
+        batch_size = int(os.getenv("CHROMADB_BATCH_SIZE", "1000"))
+
+        return cls(
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            host=host,
+            port=port,
+            auth_token=auth_token,
+            batch_size=batch_size
         )
 
 
@@ -311,6 +382,146 @@ class AzureOpenAIConfig:
             chat_model_name=chat_model_name,
             max_concurrency=max_concurrency,
             max_retries=max_retries
+        )
+
+
+@dataclass
+class HuggingFaceEmbeddingsConfig:
+    """Hugging Face embeddings configuration using sentence-transformers.
+
+    Supports local model execution (CPU/GPU) with various multilingual and
+    specialized models.
+    """
+    model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # Latest multilingual default
+    device: str = "cpu"  # "cpu", "cuda", "mps" (Apple Silicon)
+    batch_size: int = 32
+    normalize_embeddings: bool = True
+    max_seq_length: Optional[int] = None  # None = use model default
+    trust_remote_code: bool = False  # Required for some custom models
+
+    # Popular model options:
+    # - "sentence-transformers/all-MiniLM-L6-v2" (384 dims, fast, English)
+    # - "sentence-transformers/all-mpnet-base-v2" (768 dims, quality, English)
+    # - "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" (384 dims, multilingual)
+    # - "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" (768 dims, multilingual)
+    # - "intfloat/multilingual-e5-large" (1024 dims, SOTA multilingual)
+    # - "BAAI/bge-large-en-v1.5" (1024 dims, SOTA English)
+
+    @classmethod
+    def from_env(cls) -> "HuggingFaceEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            HUGGINGFACE_MODEL_NAME: Model identifier from HuggingFace Hub
+            HUGGINGFACE_DEVICE: Device to run on (cpu/cuda/mps)
+            HUGGINGFACE_BATCH_SIZE: Batch size for encoding (default: 32)
+            HUGGINGFACE_NORMALIZE: Normalize embeddings (default: true)
+            HUGGINGFACE_MAX_SEQ_LENGTH: Max sequence length (optional)
+            HUGGINGFACE_TRUST_REMOTE_CODE: Trust remote code (default: false)
+        """
+        model_name = os.getenv(
+            "HUGGINGFACE_MODEL_NAME",
+            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        )
+        device = os.getenv("HUGGINGFACE_DEVICE", "cpu")
+        batch_size = int(os.getenv("HUGGINGFACE_BATCH_SIZE", "32"))
+        normalize = os.getenv("HUGGINGFACE_NORMALIZE", "true").lower() == "true"
+        max_seq_str = os.getenv("HUGGINGFACE_MAX_SEQ_LENGTH")
+        max_seq_length = int(max_seq_str) if max_seq_str else None
+        trust_remote_code = os.getenv("HUGGINGFACE_TRUST_REMOTE_CODE", "false").lower() == "true"
+
+        return cls(
+            model_name=model_name,
+            device=device,
+            batch_size=batch_size,
+            normalize_embeddings=normalize,
+            max_seq_length=max_seq_length,
+            trust_remote_code=trust_remote_code
+        )
+
+
+@dataclass
+class CohereEmbeddingsConfig:
+    """Cohere embeddings API configuration.
+
+    Cohere provides high-quality embeddings optimized for semantic search.
+    """
+    api_key: str
+    model_name: str = "embed-multilingual-v3.0"  # Latest multilingual model
+    input_type: str = "search_document"  # "search_document" or "search_query"
+    truncate: str = "END"  # "NONE", "START", "END"
+
+    # Model options:
+    # - "embed-english-v3.0" (1024 dims, English only)
+    # - "embed-multilingual-v3.0" (1024 dims, 100+ languages)
+    # - "embed-english-light-v3.0" (384 dims, faster)
+    # - "embed-multilingual-light-v3.0" (384 dims, faster, multilingual)
+
+    @classmethod
+    def from_env(cls) -> "CohereEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            COHERE_API_KEY: Cohere API key (required)
+            COHERE_MODEL_NAME: Model name (default: embed-multilingual-v3.0)
+            COHERE_INPUT_TYPE: Input type (default: search_document)
+            COHERE_TRUNCATE: Truncation strategy (default: END)
+        """
+        api_key = os.getenv("COHERE_API_KEY")
+        if not api_key:
+            raise ValueError("COHERE_API_KEY environment variable required")
+
+        model_name = os.getenv("COHERE_MODEL_NAME", "embed-multilingual-v3.0")
+        input_type = os.getenv("COHERE_INPUT_TYPE", "search_document")
+        truncate = os.getenv("COHERE_TRUNCATE", "END")
+
+        return cls(
+            api_key=api_key,
+            model_name=model_name,
+            input_type=input_type,
+            truncate=truncate
+        )
+
+
+@dataclass
+class OpenAIEmbeddingsConfig:
+    """OpenAI embeddings API configuration (non-Azure).
+
+    For users who want to use OpenAI directly instead of Azure OpenAI.
+    """
+    api_key: str
+    model_name: str = "text-embedding-3-small"
+    dimensions: Optional[int] = None  # Optional for text-embedding-3-* models
+    max_retries: int = 3
+    timeout: int = 60
+
+    @classmethod
+    def from_env(cls) -> "OpenAIEmbeddingsConfig":
+        """Load from environment variables.
+
+        Environment variables:
+            OPENAI_API_KEY: OpenAI API key (required)
+            OPENAI_EMBEDDING_MODEL: Model name (default: text-embedding-3-small)
+            OPENAI_EMBEDDING_DIMENSIONS: Dimensions for v3 models (optional)
+            OPENAI_MAX_RETRIES: Max retries (default: 3)
+            OPENAI_TIMEOUT: Request timeout in seconds (default: 60)
+        """
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable required")
+
+        model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        dimensions_str = os.getenv("OPENAI_EMBEDDING_DIMENSIONS")
+        dimensions = int(dimensions_str) if dimensions_str else None
+        max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "3"))
+        timeout = int(os.getenv("OPENAI_TIMEOUT", "60"))
+
+        return cls(
+            api_key=api_key,
+            model_name=model_name,
+            dimensions=dimensions,
+            max_retries=max_retries,
+            timeout=timeout
         )
 
 
@@ -637,6 +848,12 @@ class PipelineConfig:
     generate_table_summaries: bool = False
     use_integrated_vectorization: bool = False  # If True, skip client-side embeddings and let Azure Search generate them
     document_action: DocumentAction = DocumentAction.ADD  # Document processing action mode
+
+    # New pluggable architecture fields (optional for backward compatibility)
+    vector_store_mode: Optional[VectorStoreMode] = None  # Auto-detected from environment or legacy config
+    vector_store_config: Optional[any] = None  # Union of SearchConfig, ChromaDBConfig, etc.
+    embeddings_mode: Optional[EmbeddingsMode] = None  # Auto-detected from environment or legacy config
+    embeddings_config: Optional[any] = None  # Union of AzureOpenAIConfig, HuggingFaceConfig, etc.
     
     @classmethod
     def from_env(cls, env_path: Optional[str] = None) -> "PipelineConfig":
@@ -695,6 +912,57 @@ class PipelineConfig:
         document_action_str = os.getenv("AZURE_DOCUMENT_ACTION", "add").lower()
         document_action = DocumentAction(document_action_str)
 
+        # Auto-detect vector store mode (backward compatible)
+        vector_store_mode = None
+        vector_store_config = None
+        if os.getenv("VECTOR_STORE_MODE"):
+            # Explicit mode specified
+            vector_store_mode = VectorStoreMode(os.getenv("VECTOR_STORE_MODE"))
+            if vector_store_mode == VectorStoreMode.AZURE_SEARCH:
+                vector_store_config = search
+            elif vector_store_mode == VectorStoreMode.CHROMADB:
+                vector_store_config = ChromaDBConfig.from_env()
+            # Other modes (Pinecone, Weaviate, etc.) will be added in future phases
+        elif os.getenv("CHROMADB_COLLECTION_NAME") or os.getenv("CHROMADB_HOST") or os.getenv("CHROMADB_PERSIST_DIR"):
+            # ChromaDB environment variables present, use ChromaDB
+            vector_store_mode = VectorStoreMode.CHROMADB
+            vector_store_config = ChromaDBConfig.from_env()
+        elif search.endpoint:
+            # Legacy: Azure Search config present, use it by default
+            vector_store_mode = VectorStoreMode.AZURE_SEARCH
+            vector_store_config = search
+
+        # Auto-detect embeddings mode (backward compatible)
+        embeddings_mode = None
+        embeddings_config = None
+        if os.getenv("EMBEDDINGS_MODE"):
+            # Explicit mode specified
+            embeddings_mode = EmbeddingsMode(os.getenv("EMBEDDINGS_MODE"))
+            if embeddings_mode == EmbeddingsMode.AZURE_OPENAI:
+                embeddings_config = azure_openai
+            elif embeddings_mode == EmbeddingsMode.HUGGINGFACE:
+                embeddings_config = HuggingFaceEmbeddingsConfig.from_env()
+            elif embeddings_mode == EmbeddingsMode.COHERE:
+                embeddings_config = CohereEmbeddingsConfig.from_env()
+            elif embeddings_mode == EmbeddingsMode.OPENAI:
+                embeddings_config = OpenAIEmbeddingsConfig.from_env()
+        elif os.getenv("HUGGINGFACE_MODEL_NAME"):
+            # Hugging Face environment variables present
+            embeddings_mode = EmbeddingsMode.HUGGINGFACE
+            embeddings_config = HuggingFaceEmbeddingsConfig.from_env()
+        elif os.getenv("COHERE_API_KEY"):
+            # Cohere environment variables present
+            embeddings_mode = EmbeddingsMode.COHERE
+            embeddings_config = CohereEmbeddingsConfig.from_env()
+        elif os.getenv("OPENAI_API_KEY") and not os.getenv("AZURE_OPENAI_ENDPOINT"):
+            # OpenAI (non-Azure) environment variables present
+            embeddings_mode = EmbeddingsMode.OPENAI
+            embeddings_config = OpenAIEmbeddingsConfig.from_env()
+        elif azure_openai.endpoint:
+            # Legacy: Azure OpenAI config present, use it by default
+            embeddings_mode = EmbeddingsMode.AZURE_OPENAI
+            embeddings_config = azure_openai
+
         return cls(
             search=search,
             document_intelligence=document_intelligence,
@@ -712,7 +980,11 @@ class PipelineConfig:
             table_render_mode=table_render_mode,
             generate_table_summaries=generate_table_summaries,
             use_integrated_vectorization=use_integrated_vectorization,
-            document_action=document_action
+            document_action=document_action,
+            vector_store_mode=vector_store_mode,
+            vector_store_config=vector_store_config,
+            embeddings_mode=embeddings_mode,
+            embeddings_config=embeddings_config
         )
 
 

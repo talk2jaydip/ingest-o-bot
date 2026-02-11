@@ -60,6 +60,10 @@ logger = get_logger(__name__)
 ENCODING_MODEL = "text-embedding-ada-002"
 bpe = tiktoken.encoding_for_model(ENCODING_MODEL)
 
+# Orphan merging threshold: Never merge chunks >= 100 tokens
+# This prevents small embedding models from over-merging reasonable chunks
+ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD = 100
+
 # Sentence endings (standard + CJK)
 SENTENCE_ENDINGS = [".", "!", "?", "。", "！", "？", "‼", "⁇", "⁈", "⁉"]
 
@@ -308,8 +312,23 @@ class LayoutAwareChunker:
         overlap_percent: int = DEFAULT_OVERLAP_PERCENT,
         cross_page_overlap: bool = DEFAULT_CROSS_PAGE_OVERLAP,
         disable_char_limit: bool = False,
-        table_renderer: Optional[TableRenderer] = None
+        table_renderer: Optional[TableRenderer] = None,
+        embedding_max_tokens: Optional[int] = None  # NEW: embedding model's max sequence length
     ):
+        """Initialize layout-aware chunker with dynamic embedding model limits.
+
+        Args:
+            max_chars: Soft character limit per chunk
+            max_tokens: Target minimum tokens per chunk
+            max_section_tokens: Hard maximum tokens per chunk
+            overlap_percent: Percentage overlap between chunks
+            cross_page_overlap: Whether to add overlap across page boundaries
+            disable_char_limit: Ignore character limits (token-only mode)
+            table_renderer: Optional table rendering strategy
+            embedding_max_tokens: Maximum sequence length supported by embedding model.
+                                 If provided, chunking limits are automatically adjusted
+                                 to prevent truncation.
+        """
         self.max_section_length = max_chars  # Soft limit
         self.max_tokens_per_section = max_tokens  # Target minimum
         self.max_section_length_tokens = max_section_tokens  # Hard maximum (500-700 range)
@@ -320,6 +339,42 @@ class LayoutAwareChunker:
         self.word_breaks = WORD_BREAKS
         self.table_renderer = table_renderer or TableRenderer()
         self.sentence_search_limit = 100
+        self.embedding_max_tokens = embedding_max_tokens
+
+        # Apply dynamic limit adjustment if embedding model has tighter constraints
+        if embedding_max_tokens:
+            # Calculate safe limit considering:
+            # 1. Overlap can add up to overlap_percent% more tokens
+            # 2. Orphan merging can increase chunk size
+            # 3. Keep 15% buffer for safety
+            overlap_buffer = 1 + (overlap_percent / 100)  # e.g., 1.10 for 10% overlap
+            safety_buffer = 0.85  # Use only 85% of limit, leaving 15% buffer
+            safe_embedding_limit = int(embedding_max_tokens * safety_buffer / overlap_buffer)
+
+            # Adjust chunking limits to respect embedding model
+            if safe_embedding_limit < self.max_section_length_tokens:
+                get_logger(__name__).warning(
+                    f"⚠️  Embedding model max_seq_length ({embedding_max_tokens}) is smaller than "
+                    f"CHUNKING_MAX_SECTION_TOKENS ({self.max_section_length_tokens}). "
+                    f"Automatically reducing chunking limit to {safe_embedding_limit} tokens "
+                    f"(with {int((1-safety_buffer)*100)}% buffer and {overlap_percent}% overlap allowance) "
+                    f"to prevent truncation."
+                )
+                self.max_section_length_tokens = safe_embedding_limit
+
+            if safe_embedding_limit < self.max_tokens_per_section:
+                get_logger(__name__).warning(
+                    f"⚠️  Adjusting CHUNKING_MAX_TOKENS from {self.max_tokens_per_section} "
+                    f"to {safe_embedding_limit} to fit embedding model "
+                    f"(with buffers for overlap and safety)."
+                )
+                self.max_tokens_per_section = safe_embedding_limit
+
+            # Update absolute max to never exceed embedding model limit
+            # Use the raw limit here (no buffer) as this is the hard safety limit
+            get_logger(__name__).info(
+                f"  Absolute max tokens set to {embedding_max_tokens} (embedding model limit)"
+            )
     
     def chunk_pages(self, pages: list[ExtractedPage]) -> list[TextChunk]:
         """Chunk multiple pages with cross-page merging and overlap.
@@ -993,10 +1048,21 @@ class LayoutAwareChunker:
         while i < len(chunks):
             current = chunks[i]
 
-            # Check if current chunk is below minimum (< 500 tokens)
+            # Calculate orphan threshold based on embedding model size
+            # For small embedding models (< 400 tokens), use conservative threshold
+            if self.embedding_max_tokens and self.embedding_max_tokens < 400:
+                # For small models, only merge truly tiny fragments (< 30% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.3)
+            else:
+                # For large models, use standard threshold (< 70% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.7)
+
+            # Ensure minimum threshold to prevent over-merging
+            orphan_threshold = max(ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD, orphan_threshold)
+
             # Skip if it contains atomic tables/figures (they're allowed to be any size)
             is_atomic_table = '<table>' in current.text.lower() or '<figure' in current.text.lower()
-            if current.token_count is not None and current.token_count < 500 and len(merged) > 0 and not is_atomic_table:
+            if current.token_count is not None and current.token_count < orphan_threshold and len(merged) > 0 and not is_atomic_table:
                 prev = merged[-1]
                 combined_text = prev.text + "\n\n" + current.text
                 combined_tokens = len(bpe.encode(combined_text))
@@ -1140,8 +1206,20 @@ class LayoutAwareChunker:
 
             print(f"  📄 Chunk {i+1}: page{current.page_num+1}, {current.token_count}tok, is_atomic={is_atomic}, merged_count={len(merged)}")
 
-            # Try to merge if below minimum and not purely atomic
-            if current.token_count is not None and current.token_count < 500 and len(merged) > 0 and not is_atomic:
+            # Calculate orphan threshold based on embedding model size
+            # For small embedding models (< 400 tokens), use conservative threshold
+            if self.embedding_max_tokens and self.embedding_max_tokens < 400:
+                # For small models, only merge truly tiny fragments (< 30% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.3)
+            else:
+                # For large models, use standard threshold (< 70% of limit)
+                orphan_threshold = int(self.max_section_length_tokens * 0.7)
+
+            # Ensure minimum threshold to prevent over-merging
+            orphan_threshold = max(ABSOLUTE_MINIMUM_ORPHAN_THRESHOLD, orphan_threshold)
+
+            # Try to merge if below threshold and not purely atomic
+            if current.token_count is not None and current.token_count < orphan_threshold and len(merged) > 0 and not is_atomic:
                 prev = merged[-1]
 
                 # Check semantic boundaries - prioritize content continuity over structure:
@@ -1177,25 +1255,31 @@ class LayoutAwareChunker:
                     print(f"  🔍 Checking: prev={prev_actual_tokens}tok (was {prev.token_count}), current={current_actual_tokens}tok (was {current.token_count}), combined={combined_tokens}tok")
 
                     # Priority: Semantic preservation over strict limits
-                    # Strategy:
-                    # 1. If combined ≤ 750: Always merge (preferred range)
-                    # 2. If current < 400: Semantic merge up to 1000 tokens
-                    # 3. If current < 500: Semantic merge up to 900 tokens
+                    # Strategy: Scale thresholds based on max_section_length_tokens
+                    # For small models (197 tokens): don't allow semantic merges beyond limit
+                    # For large models (750 tokens): allow up to 1.3x for semantic coherence
+
+                    # Scale semantic merge thresholds based on max_section_length_tokens
+                    small_chunk_threshold = int(self.max_section_length_tokens * 0.5)
+                    very_small_threshold = int(self.max_section_length_tokens * 0.7)
+                    max_combined = int(self.max_section_length_tokens * 1.2)
+
                     allow_merge = False
 
                     if combined_tokens <= self.max_section_length_tokens:
                         # Within target range - always merge
                         allow_merge = True
-                    elif current_actual_tokens < 400:
-                        # Very small chunk - strong semantic need to merge
-                        if combined_tokens <= 1000:
+                    elif current_actual_tokens < small_chunk_threshold:
+                        # Very small chunk - semantic merge up to 120% of limit
+                        if combined_tokens <= max_combined:
                             allow_merge = True
-                            print(f"  🔀 Semantic merge (<400tok orphan): {combined_tokens} tokens")
-                    elif current_actual_tokens < 500:
-                        # Below minimum - semantic merge up to 900
-                        if combined_tokens <= 900:
+                            print(f"  🔀 Semantic merge (<{small_chunk_threshold}tok orphan): {combined_tokens} tokens")
+                    elif current_actual_tokens < very_small_threshold:
+                        # Small chunk - semantic merge up to 115% of limit
+                        max_combined_small = int(self.max_section_length_tokens * 1.15)
+                        if combined_tokens <= max_combined_small:
                             allow_merge = True
-                            print(f"  🔀 Semantic merge (<500tok): {combined_tokens} tokens")
+                            print(f"  🔀 Semantic merge (<{very_small_threshold}tok): {combined_tokens} tokens")
 
                     if allow_merge:
                         print(f"  ✅ Merging: chunk@page{current.page_num+1} ({current.token_count}tok) + prev@page{prev.page_num+1} ({prev.token_count}tok) = {combined_tokens}tok")
@@ -1450,9 +1534,24 @@ def create_chunker(
     overlap_percent: int = DEFAULT_OVERLAP_PERCENT,
     cross_page_overlap: bool = DEFAULT_CROSS_PAGE_OVERLAP,
     disable_char_limit: bool = False,
-    table_renderer: Optional[TableRenderer] = None
+    table_renderer: Optional[TableRenderer] = None,
+    embedding_max_tokens: Optional[int] = None
 ) -> LayoutAwareChunker:
-    """Factory function to create token-based chunker."""
+    """Factory function to create token-based chunker.
+
+    Args:
+        max_chars: Soft character limit per chunk
+        max_tokens: Target minimum tokens per chunk
+        max_section_tokens: Hard maximum tokens per chunk
+        overlap_percent: Percentage overlap between chunks
+        cross_page_overlap: Whether to add overlap across page boundaries
+        disable_char_limit: Ignore character limits (token-only mode)
+        table_renderer: Optional table rendering strategy
+        embedding_max_tokens: Maximum sequence length supported by embedding model
+
+    Returns:
+        Configured LayoutAwareChunker instance
+    """
     return LayoutAwareChunker(
         max_chars=max_chars,
         max_tokens=max_tokens,
@@ -1460,5 +1559,6 @@ def create_chunker(
         overlap_percent=overlap_percent,
         cross_page_overlap=cross_page_overlap,
         disable_char_limit=disable_char_limit,
-        table_renderer=table_renderer
+        table_renderer=table_renderer,
+        embedding_max_tokens=embedding_max_tokens
     )

@@ -278,3 +278,40 @@ class ChunkDocument:
 
         return doc
 
+    def to_vector_document(self, include_embeddings: bool = True) -> dict:
+        """Convert to generic vector document format.
+
+        This provides a standardized format that can be adapted by each
+        vector store implementation. Azure Search uses to_search_document(),
+        while other stores (ChromaDB, Pinecone, etc.) should use this method.
+
+        Args:
+            include_embeddings: If True, include the embeddings vector.
+                               If False, omit embeddings (for server-side vectorization).
+
+        Returns:
+            Dictionary with standardized vector document format containing:
+            - id: Unique chunk identifier
+            - text: Chunk text content
+            - embedding: Embedding vector (if include_embeddings=True)
+            - metadata: Dictionary with all chunk metadata
+        """
+        return {
+            "id": self.chunk.chunk_id,
+            "text": self.chunk.text,
+            "embedding": self.chunk.embedding if include_embeddings else None,
+            "metadata": {
+                "sourcefile": self.document.sourcefile,
+                "sourcepage": self.page.sourcepage,
+                "page_number": self.page.page_num,
+                "storage_url": self.page.page_blob_url or self.document.storage_url,
+                "document_url": self.document.storage_url,
+                "chunk_index": self.chunk.chunk_index_on_page,
+                "title": self.chunk.title,
+                "token_count": self.chunk.token_count,
+                "has_figures": len(self.figures) > 0,
+                "has_tables": len(self.tables) > 0,
+                "figure_urls": [f.url for f in self.figures if f.url],
+            }
+        }
+
