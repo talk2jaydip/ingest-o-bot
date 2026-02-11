@@ -1,23 +1,43 @@
 # Ingestor Examples
 
-Example scripts and notebooks demonstrating ingestor library usage.
+Example scripts and notebooks demonstrating ingestor library usage with the pluggable architecture.
+
+## 🔌 Pluggable Architecture Examples
+
+The ingestor library supports multiple vector stores and embeddings providers. These examples demonstrate different configurations:
+
+### Quick Examples
+- **[offline_chromadb_huggingface.py](offline_chromadb_huggingface.py)** - Fully offline setup with ChromaDB + Hugging Face (zero API costs)
+- **[azure_search_cohere.py](azure_search_cohere.py)** - Cloud setup with Azure Search + Cohere embeddings
+
+### Configuration Examples (envs/ directory)
+- **[.env.example](../envs/.env.example)** - Default Azure Search + Azure OpenAI
+- **[.env.chromadb.example](../envs/.env.chromadb.example)** - Fully offline ChromaDB + Hugging Face
+- **[.env.cohere.example](../envs/.env.cohere.example)** - Azure Search + Cohere
+- **[.env.hybrid.example](../envs/.env.hybrid.example)** - Azure Search + local Hugging Face
 
 ## 📁 Directory Structure
 
 ```
 examples/
-├── README.md                   # This file
-├── scripts/                    # Python script examples
-│   ├── 01_basic_usage.py
-│   ├── 02_custom_config.py
-│   ├── 03_streaming_logs.py
-│   └── 04_batch_processing.py
-├── notebooks/                  # Jupyter notebook examples (coming soon)
-│   ├── 01_quickstart.ipynb
-│   ├── 02_configuration.ipynb
-│   └── 03_advanced_features.ipynb
-└── data/                       # Sample documents for testing
-    └── sample.pdf
+├── README.md                           # This file
+├── offline_chromadb_huggingface.py    # Fully offline example
+├── azure_search_cohere.py              # Cloud example with Cohere
+├── scripts/                            # Python script examples
+│   ├── 01_basic_usage.py               # Simplest example
+│   ├── 02_custom_config.py             # Programmatic configuration
+│   ├── 03_streaming_logs.py            # Real-time logging
+│   ├── 04_batch_processing.py          # Multiple document sets
+│   ├── 05_azure_blob.py                # Blob storage example
+│   └── 06_index_management.py          # Index operations
+├── notebooks/                          # Jupyter notebook examples
+│   ├── 00_quick_playbook.ipynb         # Quick reference
+│   ├── 01_quickstart.ipynb             # Getting started
+│   ├── 02_configuration.ipynb          # Configuration deep dive
+│   ├── 09_pluggable_architecture.ipynb # Vector stores & embeddings
+│   └── ...                             # Additional notebooks
+└── data/                               # Sample documents for testing
+    └── (place your test PDFs here)
 ```
 
 ## 🚀 Getting Started
@@ -33,29 +53,105 @@ examples/
    pip install ingestor
    ```
 
-2. **Set up environment variables:**
-   ```bash
-   # Copy the example environment file
-   cp ../.env.example .env
+2. **Choose your configuration:**
 
-   # Edit .env with your Azure credentials
-   # Required variables:
+   **Option A: Fully Offline (ChromaDB + Hugging Face)**
+   ```bash
+   # Install dependencies
+   pip install -r requirements-chromadb.txt
+   pip install -r requirements-embeddings.txt
+
+   # Copy configuration
+   cp envs/.env.chromadb.example .env
+
+   # No Azure credentials needed!
+   # Run: python examples/offline_chromadb_huggingface.py
+   ```
+
+   **Option B: Cloud (Azure Search + Azure OpenAI)**
+   ```bash
+   # Copy configuration
+   cp envs/.env.example .env
+
+   # Edit .env with your Azure credentials:
    # - AZURE_SEARCH_SERVICE
    # - AZURE_SEARCH_KEY
    # - AZURE_SEARCH_INDEX
-   # - DOCUMENTINTELLIGENCE_ENDPOINT
-   # - DOCUMENTINTELLIGENCE_KEY
+   # - DOCUMENTINTELLIGENCE_ENDPOINT (optional)
+   # - DOCUMENTINTELLIGENCE_KEY (optional)
    # - AZURE_OPENAI_ENDPOINT
    # - AZURE_OPENAI_KEY
    # - AZURE_OPENAI_EMBEDDING_DEPLOYMENT
    ```
+
+   **Option C: Hybrid (Azure Search + Hugging Face)**
+   ```bash
+   pip install -r requirements-embeddings.txt
+   cp envs/.env.hybrid.example .env
+   # Edit with Azure Search credentials only (no embedding API costs!)
+   ```
+
+3. **Place documents:**
+   ```bash
+   # Create documents directory
+   mkdir documents
+
+   # Copy your PDF files to documents/
+   ```
+
+## 🎯 Quick Start Examples
+
+### Offline Example (No Cloud Required)
+**[offline_chromadb_huggingface.py](offline_chromadb_huggingface.py)**
+
+Fully offline document processing with ChromaDB + Hugging Face embeddings.
+
+```bash
+# Install dependencies
+pip install -r requirements-chromadb.txt
+pip install -r requirements-embeddings.txt
+
+# Run
+python examples/offline_chromadb_huggingface.py
+```
+
+**Benefits:**
+- Zero API costs
+- Complete data privacy
+- No internet required (after initial model download)
+- Works with any document format
+
+---
+
+### Cloud Example
+**[azure_search_cohere.py](azure_search_cohere.py)**
+
+Enterprise setup with Azure AI Search + Cohere multilingual embeddings.
+
+```bash
+# Install Cohere
+pip install cohere
+
+# Configure .env with Azure and Cohere credentials
+
+# Run
+python examples/azure_search_cohere.py
+```
+
+**Benefits:**
+- Enterprise-grade vector search
+- 100+ language support
+- Competitive pricing
+- Scalable cloud infrastructure
+
+---
 
 ## 📝 Python Script Examples
 
 ### 01_basic_usage.py
 **Minimal hello-world example**
 
-The simplest way to use ingestor. Loads configuration from `.env` and processes documents.
+The simplest way to use ingestor. Loads configuration from `.env` and processes documents. Works with any vector store and embeddings configuration.
 
 ```bash
 python examples/scripts/01_basic_usage.py
@@ -64,6 +160,7 @@ python examples/scripts/01_basic_usage.py
 **What it demonstrates:**
 - Using `run_pipeline()` convenience function
 - Reading configuration from `.env` file
+- Works with any pluggable configuration
 - Basic result handling
 
 ---
