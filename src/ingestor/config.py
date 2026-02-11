@@ -48,6 +48,23 @@ class OfficeExtractorMode(str, Enum):
     HYBRID = "hybrid"          # Azure DI first, fallback to MarkItDown (recommended)
 
 
+class VectorStoreMode(str, Enum):
+    """Vector database mode."""
+    AZURE_SEARCH = "azure_search"  # Azure AI Search (default)
+    CHROMADB = "chromadb"          # ChromaDB (local/cloud)
+    PINECONE = "pinecone"          # Pinecone (cloud-based)
+    WEAVIATE = "weaviate"          # Weaviate
+    QDRANT = "qdrant"              # Qdrant
+
+
+class EmbeddingsMode(str, Enum):
+    """Embeddings provider mode."""
+    AZURE_OPENAI = "azure_openai"  # Azure OpenAI (default)
+    HUGGINGFACE = "huggingface"    # Hugging Face sentence-transformers (local)
+    COHERE = "cohere"              # Cohere embeddings API
+    OPENAI = "openai"              # OpenAI embeddings API (non-Azure)
+
+
 @dataclass
 class AzureCredentials:
     """Azure Service Principal credentials for Key Vault and other services."""
@@ -637,6 +654,12 @@ class PipelineConfig:
     generate_table_summaries: bool = False
     use_integrated_vectorization: bool = False  # If True, skip client-side embeddings and let Azure Search generate them
     document_action: DocumentAction = DocumentAction.ADD  # Document processing action mode
+
+    # New pluggable architecture fields (optional for backward compatibility)
+    vector_store_mode: Optional[VectorStoreMode] = None  # Auto-detected from environment or legacy config
+    vector_store_config: Optional[any] = None  # Union of SearchConfig, ChromaDBConfig, etc.
+    embeddings_mode: Optional[EmbeddingsMode] = None  # Auto-detected from environment or legacy config
+    embeddings_config: Optional[any] = None  # Union of AzureOpenAIConfig, HuggingFaceConfig, etc.
     
     @classmethod
     def from_env(cls, env_path: Optional[str] = None) -> "PipelineConfig":
@@ -695,6 +718,32 @@ class PipelineConfig:
         document_action_str = os.getenv("AZURE_DOCUMENT_ACTION", "add").lower()
         document_action = DocumentAction(document_action_str)
 
+        # Auto-detect vector store mode (backward compatible)
+        vector_store_mode = None
+        vector_store_config = None
+        if os.getenv("VECTOR_STORE_MODE"):
+            vector_store_mode = VectorStoreMode(os.getenv("VECTOR_STORE_MODE"))
+            if vector_store_mode == VectorStoreMode.AZURE_SEARCH:
+                vector_store_config = search
+            # ChromaDB and others will be added in Phase 2+
+        elif search.endpoint:
+            # Legacy: Azure Search config present, use it by default
+            vector_store_mode = VectorStoreMode.AZURE_SEARCH
+            vector_store_config = search
+
+        # Auto-detect embeddings mode (backward compatible)
+        embeddings_mode = None
+        embeddings_config = None
+        if os.getenv("EMBEDDINGS_MODE"):
+            embeddings_mode = EmbeddingsMode(os.getenv("EMBEDDINGS_MODE"))
+            if embeddings_mode == EmbeddingsMode.AZURE_OPENAI:
+                embeddings_config = azure_openai
+            # Hugging Face, Cohere, OpenAI will be added in Phase 3+
+        elif azure_openai.endpoint:
+            # Legacy: Azure OpenAI config present, use it by default
+            embeddings_mode = EmbeddingsMode.AZURE_OPENAI
+            embeddings_config = azure_openai
+
         return cls(
             search=search,
             document_intelligence=document_intelligence,
@@ -712,7 +761,11 @@ class PipelineConfig:
             table_render_mode=table_render_mode,
             generate_table_summaries=generate_table_summaries,
             use_integrated_vectorization=use_integrated_vectorization,
-            document_action=document_action
+            document_action=document_action,
+            vector_store_mode=vector_store_mode,
+            vector_store_config=vector_store_config,
+            embeddings_mode=embeddings_mode,
+            embeddings_config=embeddings_config
         )
 
 
