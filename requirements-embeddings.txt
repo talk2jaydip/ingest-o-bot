@@ -1,0 +1,27 @@
+# Multi-model embeddings support
+# Install with: pip install -r requirements-embeddings.txt
+
+# Hugging Face embeddings (local models)
+# sentence-transformers provides easy-to-use embedding models
+sentence-transformers>=2.3.0
+
+# PyTorch - Required by sentence-transformers
+# For CPU-only: torch>=2.0.0
+# For CUDA (GPU): torch>=2.0.0+cu118 (adjust CUDA version as needed)
+torch>=2.0.0
+
+# Cohere embeddings (API-based)
+# Latest Cohere SDK for v3 multilingual models
+cohere>=5.0.0
+
+# OpenAI embeddings (already included in base requirements)
+# openai>=1.10.0  # Already in requirements.txt
+
+# Optional: Accelerate for faster inference with Hugging Face models
+# accelerate>=0.25.0
+
+# Note: These are optional dependencies
+# - For Hugging Face only: pip install sentence-transformers torch
+# - For Cohere only: pip install cohere
+# - For OpenAI: Already installed with base requirements
+# - For all: pip install -r requirements-embeddings.txt
