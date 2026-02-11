@@ -108,3 +108,4 @@ Thumbs.db
 
 # Local configuration (tracked with generic version on GitHub)
 src/ingestor/index.py
+test_db/

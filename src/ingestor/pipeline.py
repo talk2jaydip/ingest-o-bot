@@ -1128,23 +1128,30 @@ class Pipeline:
                     logger.error(f"Failed to upload full document {filename}: {e}")
                     raise RuntimeError(f"Failed to upload document to blob storage: {e}") from e
             else:
-                # No blob storage - construct URL from environment config
+                # No blob storage - try to construct URL from environment config
                 logger.info(f"Constructing blob URL for {filename} from environment config (not uploading)")
                 constructed_url = self._construct_blob_url_from_config(filename)
                 if constructed_url:
                     self.full_document_urls[filename] = constructed_url
                     logger.info(f"✓ Constructed blob URL: {constructed_url}")
                 else:
-                    # No way to construct URL - configuration error
-                    logger.error(
-                        f"❌ Cannot construct blob URL for {filename}: Missing blob storage configuration. "
-                        f"storage_url requires blob URLs. "
-                        f"Please configure AZURE_STORAGE_ACCOUNT and container settings."
+                    # No blob storage config - use local file URL for offline mode
+                    # This allows ChromaDB and other vector stores to work without Azure blob storage
+                    logger.warning(
+                        f"⚠️  No blob storage configured for {filename}. "
+                        f"Using local file URL (offline mode). "
+                        f"Note: Azure AI Search requires blob URLs, but other vector stores like ChromaDB can work with file:// URLs."
                     )
-                    raise ValueError(
-                        "Blob storage configuration required for storage_url. "
-                        "Set AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_CONTAINER or blob container settings."
-                    )
+                    # Use the source_url (which is already a file path) or construct a file:// URL
+                    if source_url.startswith('file://'):
+                        self.full_document_urls[filename] = source_url
+                    else:
+                        # Convert to file:// URL
+                        import pathlib
+                        abs_path = pathlib.Path(source_url).resolve()
+                        file_url = abs_path.as_uri()
+                        self.full_document_urls[filename] = file_url
+                    logger.info(f"✓ Using local file URL: {self.full_document_urls[filename]}")
 
     async def _upload_page_pdf(
         self,
