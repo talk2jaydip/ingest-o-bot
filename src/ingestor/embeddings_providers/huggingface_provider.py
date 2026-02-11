@@ -30,7 +30,7 @@ class HuggingFaceEmbeddingsProvider(EmbeddingsProvider):
 
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-mpnet-base-v2",
+        model_name: str = "jinaai/jina-embeddings-v2-base-en",
         device: str = "cpu",
         batch_size: int = 32,
         normalize_embeddings: bool = True,
@@ -146,9 +146,9 @@ class HuggingFaceEmbeddingsProvider(EmbeddingsProvider):
             Maximum sequence length in tokens
 
         Example:
-            - all-mpnet-base-v2: 384 tokens (default)
+            - jina-embeddings-v2-base-en: 8192 tokens (default)
+            - all-mpnet-base-v2: 384 tokens
             - all-MiniLM-L6-v2: 256 tokens
-            - multilingual-e5-large: 512 tokens
         """
         return self.model.max_seq_length
 
