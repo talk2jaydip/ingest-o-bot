@@ -683,7 +683,11 @@ class Pipeline:
 
             # Collect deletion tasks
             delete_tasks = []
-            delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
+            # Use pluggable vector store if available, otherwise use legacy search_uploader
+            if self.vector_store:
+                delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
+            elif self.search_uploader:
+                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
             if self.clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                 delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -908,7 +912,11 @@ class Pipeline:
             try:
                 # Delete chunks and artifacts in parallel
                 delete_tasks = []
-                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
+                # Use pluggable vector store if available, otherwise use legacy search_uploader
+                if self.vector_store:
+                    delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
+                elif self.search_uploader:
+                    delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
                 if clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                     delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -961,7 +969,13 @@ class Pipeline:
         WARNING: This will delete ALL documents in the index!
         """
         logger.warning("Removing ALL documents from search index")
-        count = await self.search_uploader.delete_all_documents()
+        # Use pluggable vector store if available, otherwise use legacy search_uploader
+        if self.vector_store:
+            count = await self.vector_store.delete_all_documents()
+        elif self.search_uploader:
+            count = await self.search_uploader.delete_all_documents()
+        else:
+            raise RuntimeError("No vector store configured!")
         logger.info(f"Removed {count} documents from index")
     
     async def _extract_text_file(
