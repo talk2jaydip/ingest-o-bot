@@ -8,10 +8,7 @@ from pathlib import Path
 # Add parent directory to path to allow running as script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Load environment variables from .env file
 from dotenv import load_dotenv
-load_dotenv()
-
 from ingestor.config import DocumentAction, InputMode, PipelineConfig
 from ingestor.pipeline import Pipeline
 from ingestor.logging_utils import setup_logging
@@ -27,6 +24,9 @@ async def main():
 Examples:
   # Validate configuration and environment (pre-check)
   python -m ingestor.cli --validate
+
+  # Use a specific environment file (e.g., offline mode with ChromaDB + Hugging Face)
+  python -m ingestor.cli --env .env.offline --glob "data/*.pdf"
 
   # Deploy/update index ONLY (no ingestion)
   python -m ingestor.cli --index-only
@@ -58,6 +58,15 @@ Examples:
   # Verbose logging
   python -m ingestor.cli --verbose --glob "documents/*.pdf"
         """
+    )
+    parser.add_argument(
+        "--env",
+        "--env-file",
+        dest="env_file",
+        type=str,
+        metavar="PATH",
+        default=".env",
+        help="Path to environment file (default: .env). Use this to test different configurations, e.g., --env .env.offline"
     )
     parser.add_argument(
         "--pdf",
@@ -138,6 +147,26 @@ Examples:
         help="Run pre-check validation on configuration and environment, then exit (no document processing)"
     )
     args = parser.parse_args()
+
+    # Load environment variables from specified .env file
+    env_file_path = Path(args.env_file)
+    if env_file_path.exists():
+        load_dotenv(dotenv_path=env_file_path, override=True)
+        print(f"✓ Loaded environment from: {env_file_path}")
+    else:
+        print(f"⚠️  Environment file not found: {env_file_path}")
+        print(f"⚠️  Continuing with system environment variables...")
+
+    # Validate environment parameters for typos and issues
+    from ingestor.config_validator import validate_environment
+    warnings, errors = validate_environment(warn_only=True)
+    if warnings:
+        print(f"\n⚠️  Found {len(warnings)} environment parameter warnings:")
+        for warning in warnings[:5]:  # Show first 5 warnings
+            print(f"  {warning}")
+        if len(warnings) > 5:
+            print(f"  ... and {len(warnings) - 5} more warnings")
+        print()
 
     # Load logging configuration from environment
     from ingestor.config import LoggingConfig
