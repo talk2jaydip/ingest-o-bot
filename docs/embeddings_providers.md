@@ -83,7 +83,8 @@ config = (
 #### English Models
 | Model | Dimensions | Max Tokens | Size | Speed | Quality |
 |-------|-----------|------------|------|-------|---------|
-| `all-mpnet-base-v2` (default) | 768 | 384 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
+| `jinaai/jina-embeddings-v2-base-en` (default) | 768 | 8192 | 137MB | ⚡⚡⚡ Fast | ⭐⭐⭐⭐ Better |
+| `all-mpnet-base-v2` | 768 | 384 | 420MB | ⚡⚡ Medium | ⭐⭐⭐⭐ Better |
 | `all-MiniLM-L6-v2` | 384 | 256 | 90MB | ⚡⚡⚡ Fast | ⭐⭐⭐ Good |
 | `BAAI/bge-large-en-v1.5` | 1024 | 512 | 1.3GB | ⚡ Slower | ⭐⭐⭐⭐⭐ Best |
 
@@ -99,7 +100,7 @@ config = (
 **Environment Variables:**
 ```bash
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2  # Default
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en  # Default
 HUGGINGFACE_DEVICE=cpu  # or cuda, mps
 HUGGINGFACE_BATCH_SIZE=32
 HUGGINGFACE_NORMALIZE=true
@@ -116,7 +117,7 @@ HUGGINGFACE_NORMALIZE=true
 config = (
     ConfigBuilder()
     .with_huggingface_embeddings(
-        model_name="sentence-transformers/all-mpnet-base-v2",  # Default
+        model_name="jinaai/jina-embeddings-v2-base-en",  # Default
         device="cpu",
         batch_size=32
     )
@@ -190,12 +191,19 @@ Hugging Face models automatically report their `max_seq_length` to the pipeline,
 3. Applies safety buffer (15%) + overlap allowance to prevent truncation
 4. Logs warning messages when adjustments are made
 
-**Example:**
+**Example with small token limit:**
 ```
 Model: all-mpnet-base-v2 (max_seq_length = 384)
 Config: CHUNKING_MAX_TOKENS=500
 Result: ⚠️  Automatically reducing chunking limit to 288 tokens
         (384 * (1 - 0.15 - 0.10) = 288)
+```
+
+**Example with default model:**
+```
+Model: jina-embeddings-v2-base-en (max_seq_length = 8192)
+Config: CHUNKING_MAX_TOKENS=500
+Result: No adjustment needed (500 < 8192)
 ```
 
 **Benefits:**
@@ -392,7 +400,7 @@ EMBEDDINGS_MODE=azure_openai
 VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en
 HUGGINGFACE_DEVICE=cpu
 ```
 - Fully offline
@@ -415,7 +423,7 @@ HUGGINGFACE_DEVICE=cuda
 VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en
 ```
 - Zero API costs
 - Local storage
