@@ -50,7 +50,7 @@ Ingestor now supports multiple vector databases and embedding providers through 
 VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
-HUGGINGFACE_MODEL_NAME=intfloat/multilingual-e5-large
+HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
 ```
 
 **Hybrid Cloud/Local (Azure Search + Hugging Face):**
@@ -79,9 +79,9 @@ The pipeline now features **automatic chunk size adjustment** based on your embe
 
 **Example:**
 ```
-Model: all-MiniLM-L6-v2 (256 token limit)
+Model: all-mpnet-base-v2 (384 token limit)
 Config: CHUNKING_MAX_TOKENS=500
-Result: Automatically reduced to 192 tokens
+Result: Automatically reduced to 288 tokens
 ```
 
 Generic parameter names supported alongside Azure-prefixed ones:

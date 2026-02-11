@@ -1,4 +1,13 @@
-# Core Azure dependencies
+# ==========================================
+# Ingestor - Document Ingestion Pipeline
+# ==========================================
+# Main requirements file with all dependencies
+# For minimal install: pip install -r requirements.txt
+# For optional features, see sections below
+
+# ==========================================
+# Core Azure Dependencies
+# ==========================================
 azure-ai-documentintelligence>=1.0.0
 azure-search-documents>=11.4.0
 azure-storage-blob>=12.19.0
@@ -6,10 +15,14 @@ azure-identity>=1.15.0
 azure-keyvault-secrets>=4.7.0
 azure-core>=1.29.0
 
+# ==========================================
 # OpenAI
+# ==========================================
 openai>=1.10.0
 
-# Document processing - PDF and Office formats
+# ==========================================
+# Document Processing
+# ==========================================
 # MarkItDown: Unified converter for PDFs, Office docs (DOCX/PPTX/DOC), and more
 # Supports PDF extraction in offline mode (replaces pypdf/pymupdf)
 # Note: DOC files require LibreOffice installed on system (not a Python package)
@@ -18,11 +31,9 @@ markitdown>=0.0.1
 # Image processing
 Pillow>=10.0.0
 
-# Optional: Legacy PDF libraries (no longer used by default)
-# pypdf>=4.0.0
-# pymupdf>=1.23.0
-
+# ==========================================
 # Utilities
+# ==========================================
 python-dotenv>=1.0.0
 aiohttp>=3.9.0
 tiktoken>=0.5.0
@@ -31,3 +42,49 @@ tenacity>=8.2.0
 # Optional for rich logging
 rich>=13.0.0
 
+# ==========================================
+# Vector Stores (Optional)
+# ==========================================
+# ChromaDB - Open-source embedding database
+# Install for offline/local vector storage
+# chromadb>=0.4.22
+# Uncomment above or: pip install -r requirements-chromadb.txt
+
+# ==========================================
+# Embeddings Providers (Optional)
+# ==========================================
+# Hugging Face embeddings (local models)
+# sentence-transformers>=2.3.0
+# torch>=2.0.0
+
+# Cohere embeddings (API-based)
+# cohere>=5.0.0
+
+# Uncomment above or: pip install -r requirements-embeddings.txt
+
+# ==========================================
+# Development/Testing (Optional)
+# ==========================================
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+
+# ==========================================
+# Web Interface (Optional)
+# ==========================================
+# gradio>=4.0.0
+# Uncomment above or: pip install -r requirements-gradio.txt
+
+# ==========================================
+# Optional: PDF Support
+# ==========================================
+# For enhanced PDF processing with MarkItDown:
+# pip install markitdown[pdf]
+# OR for all MarkItDown features:
+# pip install markitdown[all]
+
+# ==========================================
+# Optional: GPU Support
+# ==========================================
+# For CUDA GPU support with PyTorch:
+# See requirements-gpu.txt or install manually:
+# pip install torch>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
