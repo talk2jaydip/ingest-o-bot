@@ -1,14 +1,4 @@
-# Gradio UI Requirements
-# Install with: pip install -r requirements-gradio.txt
+# Gradio Web UI
+# Install: pip install -r requirements-gradio.txt
 
-# Core Gradio framework
-gradio>=4.0.0
-
-# Azure Storage for blob container listing
-azure-storage-blob>=12.0.0
-
-# Azure AI Search for index exploration
-azure-search-documents>=11.4.0
-
-# Already included in main requirements but listed for clarity
-python-dotenv>=1.0.0
+gradio>=4.0.0  # Web interface for document ingestion
