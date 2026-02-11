@@ -40,17 +40,41 @@ venv.bak/
 .claude/
 
 # Environment variables (CRITICAL - Never commit real credentials!)
+# Block all .env files with secrets
 .env
+.env.*
+!.env.*.example
+!.env.example
+
+# Specific env files that may contain secrets (explicit listing)
 .env.local
-.env.*.local
 .env.dev
 .env.staging
 .env.prod
-.env.backup
 .env.production
+.env.backup
+.env.azure
+.env.offline
+.env.hybrid
+.env.test
+.env.test_*
+.env_*
+
+# Env files in subdirectories
+envs/.env
+envs/.env.*
+!envs/.env.*.example
+!envs/.env.example
+envs/env.*
+!envs/env.*.example
+
+# Wildcard pattern for any .env variants
 *.env
 !.env.example
-!.env.example.*
+!.env.*.example
+!*.example.env
+
+# Credentials and keys
 *.key
 *.pem
 *.pfx

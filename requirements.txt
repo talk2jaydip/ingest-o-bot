@@ -1,90 +1,34 @@
-# ==========================================
-# Ingestor - Document Ingestion Pipeline
-# ==========================================
-# Main requirements file with all dependencies
-# For minimal install: pip install -r requirements.txt
-# For optional features, see sections below
+# ============================================================================
+# Ingestor - Core Dependencies
+# ============================================================================
+# Production dependencies for document ingestion pipeline
+# Install: pip install -r requirements.txt
+#
+# Optional features:
+#   ChromaDB:     pip install chromadb>=0.4.22
+#   Hugging Face: pip install sentence-transformers>=2.3.0 torch>=2.0.0
+#   Cohere:       pip install cohere>=5.0.0
+#   Gradio UI:    pip install gradio>=4.0.0
+# ============================================================================
 
-# ==========================================
-# Core Azure Dependencies
-# ==========================================
-azure-ai-documentintelligence>=1.0.0
-azure-search-documents>=11.4.0
-azure-storage-blob>=12.19.0
-azure-identity>=1.15.0
-azure-keyvault-secrets>=4.7.0
-azure-core>=1.29.0
+# Azure SDK
+azure-ai-documentintelligence>=1.0.0  # Document Intelligence extraction
+azure-search-documents>=11.4.0        # Vector search index
+azure-storage-blob>=12.19.0           # Blob storage for artifacts
+azure-identity>=1.15.0                # Azure authentication
+azure-keyvault-secrets>=4.7.0         # Key Vault integration
+azure-core>=1.29.0                    # Azure SDK core
 
-# ==========================================
 # OpenAI
-# ==========================================
-openai>=1.10.0
+openai>=1.10.0                        # Azure OpenAI embeddings & descriptions
 
-# ==========================================
 # Document Processing
-# ==========================================
-# MarkItDown: Unified converter for PDFs, Office docs (DOCX/PPTX/DOC), and more
-# Supports PDF extraction in offline mode (replaces pypdf/pymupdf)
-# Note: DOC files require LibreOffice installed on system (not a Python package)
-markitdown>=0.0.1
+markitdown>=0.0.1                     # PDF, Office, HTML, Markdown converter
+Pillow>=10.0.0                        # Image processing
 
-# Image processing
-Pillow>=10.0.0
-
-# ==========================================
 # Utilities
-# ==========================================
-python-dotenv>=1.0.0
-aiohttp>=3.9.0
-tiktoken>=0.5.0
-tenacity>=8.2.0
-
-# Optional for rich logging
-rich>=13.0.0
-
-# ==========================================
-# Vector Stores (Optional)
-# ==========================================
-# ChromaDB - Open-source embedding database
-# Install for offline/local vector storage
-# chromadb>=0.4.22
-# Uncomment above or: pip install -r requirements-chromadb.txt
-
-# ==========================================
-# Embeddings Providers (Optional)
-# ==========================================
-# Hugging Face embeddings (local models)
-# sentence-transformers>=2.3.0
-# torch>=2.0.0
-
-# Cohere embeddings (API-based)
-# cohere>=5.0.0
-
-# Uncomment above or: pip install -r requirements-embeddings.txt
-
-# ==========================================
-# Development/Testing (Optional)
-# ==========================================
-# pytest>=7.0.0
-# pytest-asyncio>=0.21.0
-
-# ==========================================
-# Web Interface (Optional)
-# ==========================================
-# gradio>=4.0.0
-# Uncomment above or: pip install -r requirements-gradio.txt
-
-# ==========================================
-# Optional: PDF Support
-# ==========================================
-# For enhanced PDF processing with MarkItDown:
-# pip install markitdown[pdf]
-# OR for all MarkItDown features:
-# pip install markitdown[all]
-
-# ==========================================
-# Optional: GPU Support
-# ==========================================
-# For CUDA GPU support with PyTorch:
-# See requirements-gpu.txt or install manually:
-# pip install torch>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
+python-dotenv>=1.0.0                  # Environment configuration
+aiohttp>=3.9.0                        # Async HTTP client
+tiktoken>=0.5.0                       # Token counting
+tenacity>=8.2.0                       # Retry logic
+rich>=13.0.0                          # Rich console output
