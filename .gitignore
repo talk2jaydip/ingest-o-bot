@@ -59,6 +59,16 @@ venv.bak/
 .env.test
 .env.test_*
 .env_*
+.env.working
+.env.mine
+
+# User-created env files (based on templates)
+.env.azure-local-input
+.env.azure-chromadb-hybrid
+.env.offline-with-vision
+.env.hybrid-scenarios
+.env.basic-pdf
+.env.production
 
 # Env files in subdirectories
 envs/.env
@@ -67,12 +77,21 @@ envs/.env.*
 !envs/.env.example
 envs/env.*
 !envs/env.*.example
+envs/*.mine
+envs/.env.working
+
+# Playbook env files (user copies)
+examples/playbooks/.env
+examples/playbooks/.env.*
+!examples/playbooks/.env.*.example
+examples/playbooks/*.mine
 
 # Wildcard pattern for any .env variants
 *.env
 !.env.example
 !.env.*.example
 !*.example.env
+*.mine
 
 # Credentials and keys
 *.key
@@ -110,11 +129,16 @@ benchmark_output.log
 analyze_test_results.py
 *.tmp
 *.bak
-.env.backup_*
+
+# Backup files (env and general)
+.env.backup*
 .env.*.backup
 .env_backup
 .env.azure_backup
 backups/
+*.backup
+backup_*
+*_backup
 
 # Azure
 .azure/
