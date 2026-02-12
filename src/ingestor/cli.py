@@ -168,6 +168,21 @@ Examples:
             print(f"  ... and {len(warnings) - 5} more warnings")
         print()
 
+    # Validate scenario configuration
+    from ingestor.scenario_validator import validate_current_environment
+    scenario_result = validate_current_environment(verbose=False)
+    if scenario_result.scenario:
+        if scenario_result.valid:
+            print(f"✓ Detected scenario: {scenario_result.scenario.value}")
+        else:
+            print(f"\n⚠️  Configuration issues detected for scenario: {scenario_result.scenario.value}")
+            if scenario_result.errors:
+                print(f"   Errors: {len(scenario_result.errors)}")
+                for error in scenario_result.errors[:3]:
+                    print(f"     - {error}")
+            print(f"   Run 'python -m ingestor.scenario_validator' for detailed help")
+            print()
+
     # Load logging configuration from environment
     from ingestor.config import LoggingConfig
     logging_config = LoggingConfig.from_env()
