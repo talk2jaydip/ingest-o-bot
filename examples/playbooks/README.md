@@ -15,6 +15,24 @@ Playbooks are complete, runnable examples that demonstrate real-world document p
 
 ## Quick Start
 
+### NEW Easy Way (Recommended - No Copying!)
+
+```bash
+# 1. Edit the .env file directly (keep your credentials here)
+notepad examples\playbooks\.env.basic-pdf.example
+
+# 2. Validate configuration
+python -m ingestor.scenario_validator --env-file examples\playbooks\.env.basic-pdf.example
+
+# 3. Use CLI directly with --env-file (NO copying needed!)
+python -m ingestor.cli --pdf test.pdf --env-file examples\playbooks\.env.basic-pdf.example
+
+# Or run the playbook with environment loaded
+# (Note: Playbook scripts still use PipelineConfig.from_env(), so you need to copy or export)
+```
+
+### OLD Way (Still Works)
+
 ```bash
 # 1. Choose a playbook
 cd examples/playbooks
@@ -27,6 +45,43 @@ cp .env.basic-pdf.example ../../.env
 # 4. Run the playbook
 python 01_basic_pdf_ingestion.py
 ```
+
+**Recommendation:** Use the NEW way with `--env-file` for easier scenario switching!
+
+---
+
+## Using CLI Instead of Playbooks (Simpler!)
+
+You can achieve the same results using the CLI with `--env-file` parameter - no Python scripts needed!
+
+### Basic PDF Processing
+```bash
+# 1. Edit env file with your credentials
+notepad examples\playbooks\.env.basic-pdf.example
+
+# 2. Validate
+python -m ingestor.scenario_validator --env-file examples\playbooks\.env.basic-pdf.example
+
+# 3. Process single PDF
+python -m ingestor.cli --pdf documents\sample.pdf --env-file examples\playbooks\.env.basic-pdf.example
+
+# 4. Process multiple PDFs
+python -m ingestor.cli --glob "documents\*.pdf" --env-file examples\playbooks\.env.basic-pdf.example
+
+# 5. Query
+python -m ingestor.cli --query "What is the main topic?" --env-file examples\playbooks\.env.basic-pdf.example
+```
+
+### Production Processing
+```bash
+# Use production env file
+python -m ingestor.scenario_validator --env-file examples\playbooks\.env.production.example
+python -m ingestor.cli --glob "docs\**\*.pdf" --env-file examples\playbooks\.env.production.example
+```
+
+### When to Use Playbooks vs CLI
+- **Use CLI** for: Simple processing, one-off tasks, quick testing
+- **Use Playbooks** for: Complex workflows, custom logic, multi-stage processing, detailed reporting
 
 ---
 
@@ -56,8 +111,14 @@ python 01_basic_pdf_ingestion.py
 - Clear error messages
 - Next steps guidance
 
+**Run playbook:**
 ```bash
+# Option 1: Copy .env and run playbook script
+cp .env.basic-pdf.example ../../.env
 python 01_basic_pdf_ingestion.py
+
+# Option 2: Use CLI directly (simpler!)
+python -m ingestor.cli --pdf documents/sample.pdf --env-file .env.basic-pdf.example
 ```
 
 ---
@@ -94,8 +155,15 @@ documents/
 └── general/      # Mixed content
 ```
 
+**Run playbook:**
 ```bash
+# Option 1: Run playbook script (for multi-stage custom logic)
+cp .env.basic-pdf.example ../../.env
 python 02_multi_stage_pipeline.py
+
+# Option 2: Use CLI for simpler processing
+python -m ingestor.cli --glob "documents/technical/*.pdf" --env-file .env.basic-pdf.example
+python -m ingestor.cli --glob "documents/legal/*.pdf" --env-file .env.basic-pdf.example
 ```
 
 ---

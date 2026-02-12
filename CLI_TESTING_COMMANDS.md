@@ -4,7 +4,30 @@ Quick reference guide for testing ingest-o-bot with all created environment conf
 
 ---
 
-## Quick Setup Pattern
+## ⭐ NEW Quick Setup Pattern (Recommended - No Copying!)
+
+```bash
+# 1. Edit the template file directly (keep your credentials here)
+nano envs/.env.[scenario].example  # or code envs/.env.[scenario].example
+
+# 2. Validate configuration with --env-file
+python -m ingestor.scenario_validator --env-file envs/.env.[scenario].example
+
+# 3. Pre-flight check with --env-file
+python -m ingestor.cli --validate --env-file envs/.env.[scenario].example
+
+# 4. Test with sample document (NO copying needed!)
+python -m ingestor.cli --pdf ./test.pdf --env-file envs/.env.[scenario].example
+
+# 5. Process multiple documents
+python -m ingestor.cli --glob "docs/**/*.pdf" --env-file envs/.env.[scenario].example
+
+# 6. Switch scenarios by just changing --env-file!
+python -m ingestor.cli --pdf ./test.pdf --env-file envs/.env.azure-local-input.example
+python -m ingestor.cli --pdf ./test.pdf --env-file envs/.env.offline-with-vision.example
+```
+
+## OLD Quick Setup Pattern (Still Works)
 
 ```bash
 # 1. Copy the scenario template
@@ -26,43 +49,45 @@ python -m ingestor.cli --pdf ./test.pdf
 python -m ingestor.cli --glob "docs/**/*.pdf"
 ```
 
+**💡 Recommendation:** Use the NEW method with `--env-file` for easier scenario switching and better security!
+
 ---
 
 ## Scenario 1: Azure Local Input (Full Azure Stack, Local Files)
 
-### Setup
+### Setup (NEW Method - No Copying!)
 ```bash
-# Copy template
-cp envs/.env.azure-local-input.example .env
+# Edit template directly with your credentials
+nano envs/.env.azure-local-input.example  # or notepad on Windows
 
-# Edit these required values:
-# - AZURE_DI_ENDPOINT
-# - AZURE_DI_KEY
-# - AZURE_OPENAI_ENDPOINT
-# - AZURE_OPENAI_API_KEY
-# - AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-# - AZURE_SEARCH_ENDPOINT
-# - AZURE_SEARCH_KEY
-# - AZURE_SEARCH_INDEX_NAME
+# Required values to configure:
+# - AZURE_DI_ENDPOINT=https://your-di.cognitiveservices.azure.com/
+# - AZURE_DI_KEY=your_key
+# - AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
+# - AZURE_OPENAI_API_KEY=your_key
+# - AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+# - AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
+# - AZURE_SEARCH_KEY=your_key
+# - AZURE_SEARCH_INDEX_NAME=ingestor-docs-local
 ```
 
 ### Validation
 ```bash
-# Validate all Azure credentials
-python -m ingestor.scenario_validator azure_full
+# Validate with --env-file (no copying needed!)
+python -m ingestor.scenario_validator azure_full --env-file envs/.env.azure-local-input.example
 
-# Check Azure connections
-python -m ingestor.cli --validate
+# Full pre-check
+python -m ingestor.cli --validate --env-file envs/.env.azure-local-input.example
 
 # Verify index exists (create if not)
-python -m ingestor.cli --check-index
-python -m ingestor.cli --setup-index  # If needed
+python -m ingestor.cli --check-index --env-file envs/.env.azure-local-input.example
+python -m ingestor.cli --setup-index --env-file envs/.env.azure-local-input.example  # If needed
 ```
 
 ### Testing Commands
 ```bash
-# Test single PDF (local file)
-python -m ingestor.cli --pdf ./documents/sample.pdf
+# Test single PDF (local file) - NO COPYING!
+python -m ingestor.cli --pdf ./documents/sample.pdf --env-file envs/.env.azure-local-input.example
 
 # Test with verbose output
 python -m ingestor.cli --pdf ./documents/sample.pdf --verbose
