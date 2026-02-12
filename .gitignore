@@ -172,3 +172,6 @@ Thumbs.db
 # Local configuration (tracked with generic version on GitHub)
 src/ingestor/index.py
 test_db/
+
+# Gradio UI Analytics (local only, privacy-preserving)
+.gradio_analytics.json

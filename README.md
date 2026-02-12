@@ -286,9 +286,9 @@ This makes it easy to compare performance, cost, and quality across different co
 
 ---
 
-## 🎨 Web Interface
+## 🎨 Gradio Web Interface
 
-Launch the Gradio web UI for interactive document processing:
+Launch the interactive web UI for document processing with a comprehensive feature set:
 
 ```bash
 # Using the installed command
@@ -299,12 +299,44 @@ scripts/launch_ui.bat    # Windows
 ./scripts/launch_ui.sh   # Linux/Mac
 ```
 
-The UI will open at http://localhost:7860 with features for:
-- 📂 File browsing (local and blob storage)
-- ⚙️ Configuration management
-- 📊 Real-time log streaming
-- 🔍 Artifacts inspection
-- 📈 Token counting
+The UI opens at http://localhost:7860 with:
+
+### Key Features
+
+- 🔧 **Environment File Selection** - Test different scenarios (offline, cloud, hybrid) without editing files
+- ✅ **Configuration Validation** - Catch errors early with comprehensive pre-checks
+- 📂 **Flexible Input** - Local files, folders, glob patterns, or Azure Blob Storage
+- ⚙️ **Real-time Monitoring** - Live log streaming and progress tracking
+- 🗑️ **Artifact Management** - Clean up blob storage artifacts (selective or full cleanup)
+- 📊 **Index Review** - Search documents, view chunks, and remove documents from index
+- 📈 **Usage Analytics** - Privacy-preserving local analytics (optional, opt-out available)
+- 📚 **Built-in Help** - Environment variable reference and quick start guide
+
+### Quick Start with UI
+
+1. **Launch**: Run `ingestor-ui`
+2. **Select Environment**: Choose from `envs/` directory (e.g., `.env.chromadb.example` for offline)
+3. **Validate**: Click "Validate Configuration" to check your setup
+4. **Process**: Upload a test file and click "Run Pipeline"
+5. **Review**: Check "Review Index" tab to see indexed documents
+
+**📖 [Complete Gradio UI Guide →](docs/guides/GRADIO_UI_GUIDE.md)** - Detailed documentation with all tabs, workflows, and troubleshooting
+
+### Test Different Scenarios
+
+Easily switch between configurations without editing files:
+
+```bash
+# Launch UI
+ingestor-ui
+
+# Then in the UI:
+# 1. Select ".env.chromadb.example" → Test fully offline (ChromaDB + Hugging Face)
+# 2. Select ".env.cohere.example" → Test cloud with Cohere embeddings
+# 3. Select ".env.hybrid.example" → Test Azure Search + local embeddings
+```
+
+All environment files in `envs/` directory are automatically detected and available in the dropdown.
 
 ---
 
@@ -314,6 +346,7 @@ The UI will open at http://localhost:7860 with features for:
 
 ### Getting Started
 - **[Quick Start Guide](docs/guides/QUICKSTART.md)** - Get started in 5 minutes
+- **[Gradio UI Guide](docs/guides/GRADIO_UI_GUIDE.md)** - Complete web interface documentation
 - **[Quick Reference](docs/guides/QUICK_REFERENCE.md)** - Fast lookup for common operations
 - **[Library Usage Guide](docs/guides/LIBRARY_USAGE.md)** - Using ingestor as a Python library
 
