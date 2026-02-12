@@ -114,15 +114,34 @@ class SearchConfig:
             endpoint = f"https://{search_service}.search.windows.net"
         else:
             endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
-        
+
         index_name = os.getenv("AZURE_SEARCH_INDEX")
         api_key = os.getenv("AZURE_SEARCH_KEY")
-        
+
         if not endpoint:
-            raise ValueError("AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_SERVICE is required")
+            raise ValueError(
+                "Azure AI Search configuration is incomplete.\n"
+                "  Missing: AZURE_SEARCH_SERVICE or AZURE_SEARCH_ENDPOINT\n"
+                "  \n"
+                "  Set one of:\n"
+                "    AZURE_SEARCH_SERVICE=your-search-service\n"
+                "    OR\n"
+                "    AZURE_SEARCH_ENDPOINT=https://your-search-service.search.windows.net\n"
+                "  \n"
+                "  If using ChromaDB instead, set:\n"
+                "    VECTOR_STORE_MODE=chromadb\n"
+                "  \n"
+                "  See: envs/.env.example or envs/.env.chromadb.example"
+            )
         if not index_name:
-            raise ValueError("AZURE_SEARCH_INDEX is required")
-        
+            raise ValueError(
+                "Azure AI Search index name is required.\n"
+                "  Missing: AZURE_SEARCH_INDEX\n"
+                "  \n"
+                "  Set in your .env file:\n"
+                "    AZURE_SEARCH_INDEX=your-index-name\n"
+            )
+
         return cls(
             endpoint=endpoint,
             index_name=index_name,
@@ -198,8 +217,30 @@ class DocumentIntelligenceConfig:
         key = os.getenv("AZURE_DOC_INT_KEY")
         max_concurrency = int(os.getenv("AZURE_DI_MAX_CONCURRENCY", "3"))
 
+        # Check if Document Intelligence is actually needed
+        office_mode = os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
+
         if not endpoint:
-            raise ValueError("AZURE_DOC_INT_ENDPOINT is required")
+            if office_mode == "markitdown":
+                # DI not needed for markitdown-only mode
+                return cls(endpoint=None, key=None, max_concurrency=max_concurrency)
+            else:
+                raise ValueError(
+                    "Azure Document Intelligence configuration is required.\n"
+                    "  Missing: AZURE_DOC_INT_ENDPOINT\n"
+                    "  \n"
+                    "  Options:\n"
+                    "  1. Use Azure Document Intelligence (recommended):\n"
+                    "       AZURE_DOC_INT_ENDPOINT=https://your-di.cognitiveservices.azure.com/\n"
+                    "       AZURE_DOC_INT_KEY=your-key\n"
+                    "       AZURE_OFFICE_EXTRACTOR_MODE=hybrid (or azure_di)\n"
+                    "  \n"
+                    "  2. Use offline processing only (no Azure DI):\n"
+                    "       AZURE_OFFICE_EXTRACTOR_MODE=markitdown\n"
+                    "       (No AZURE_DOC_INT_ENDPOINT needed)\n"
+                    "  \n"
+                    "  See: envs/.env.scenarios.example for configuration examples"
+                )
 
         return cls(
             endpoint=endpoint,
@@ -350,27 +391,80 @@ class AzureOpenAIConfig:
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         api_key = os.getenv("AZURE_OPENAI_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
         api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-        
+
         emb_deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
         emb_model_name = os.getenv("AZURE_OPENAI_EMBEDDING_MODEL") or os.getenv("AZURE_OPENAI_EMBEDDING_NAME", "text-embedding-ada-002")
-        
+
         # Embedding dimensions for text-embedding-3-* models (optional)
         emb_dimensions_str = os.getenv("AZURE_OPENAI_EMBEDDING_DIMENSIONS")
         emb_dimensions = int(emb_dimensions_str) if emb_dimensions_str else None
-        
+
         chat_deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
         chat_model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") or os.getenv("AZURE_OPENAI_MODEL")
-        
+
         max_concurrency = int(os.getenv("AZURE_OPENAI_MAX_CONCURRENCY", "5"))
         max_retries = int(os.getenv("AZURE_OPENAI_MAX_RETRIES", "3"))
-        
+
+        # Check if Azure OpenAI is actually needed
+        embeddings_mode = os.getenv("EMBEDDINGS_MODE", "azure_openai").lower()
+        use_integrated = os.getenv("AZURE_USE_INTEGRATED_VECTORIZATION", "false").lower() == "true"
+
         if not endpoint:
-            raise ValueError("AZURE_OPENAI_ENDPOINT is required")
+            if embeddings_mode in ["huggingface", "cohere", "openai"]:
+                # Azure OpenAI not needed for alternative embeddings
+                return cls(
+                    endpoint=None,
+                    api_key=None,
+                    emb_deployment=None,
+                    emb_model_name=emb_model_name,
+                    emb_dimensions=emb_dimensions,
+                    chat_deployment=chat_deployment,
+                    chat_model_name=chat_model_name,
+                    max_concurrency=max_concurrency,
+                    max_retries=max_retries
+                )
+            else:
+                raise ValueError(
+                    "Azure OpenAI configuration is required.\n"
+                    "  Missing: AZURE_OPENAI_ENDPOINT\n"
+                    "  \n"
+                    "  Options:\n"
+                    "  1. Use Azure OpenAI for embeddings (default):\n"
+                    "       AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/\n"
+                    "       AZURE_OPENAI_KEY=your-key\n"
+                    "       AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002\n"
+                    "  \n"
+                    "  2. Use alternative embeddings provider:\n"
+                    "       EMBEDDINGS_MODE=huggingface (local, free)\n"
+                    "       OR\n"
+                    "       EMBEDDINGS_MODE=cohere (cloud API)\n"
+                    "       COHERE_API_KEY=your-key\n"
+                    "  \n"
+                    "  See: envs/.env.chromadb.example (offline with HuggingFace)\n"
+                    "       envs/.env.cohere.example (Cohere embeddings)"
+                )
+
         if not api_key:
-            raise ValueError("AZURE_OPENAI_KEY or AZURE_OPENAI_API_KEY is required")
-        if not emb_deployment:
-            raise ValueError("AZURE_OPENAI_EMBEDDING_DEPLOYMENT is required")
-        
+            raise ValueError(
+                "Azure OpenAI API key is required.\n"
+                "  Missing: AZURE_OPENAI_KEY (or AZURE_OPENAI_API_KEY)\n"
+                "  \n"
+                "  Set in your .env file:\n"
+                "    AZURE_OPENAI_KEY=your-api-key\n"
+            )
+
+        if not emb_deployment and not use_integrated and embeddings_mode == "azure_openai":
+            raise ValueError(
+                "Azure OpenAI embedding deployment is required.\n"
+                "  Missing: AZURE_OPENAI_EMBEDDING_DEPLOYMENT\n"
+                "  \n"
+                "  Set in your .env file:\n"
+                "    AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002\n"
+                "  \n"
+                "  Or use integrated vectorization:\n"
+                "    AZURE_USE_INTEGRATED_VECTORIZATION=true\n"
+            )
+
         return cls(
             endpoint=endpoint,
             api_key=api_key,
@@ -560,11 +654,21 @@ class InputConfig:
         """Load from environment variables."""
         mode_str = os.getenv("AZURE_INPUT_MODE", "local").lower()
         mode = InputMode(mode_str)
-        
+
         if mode == InputMode.LOCAL:
             local_glob = os.getenv("AZURE_LOCAL_GLOB")
             if not local_glob:
-                raise ValueError("AZURE_LOCAL_GLOB is required when AZURE_INPUT_MODE=local")
+                raise ValueError(
+                    "Local input configuration is incomplete.\n"
+                    "  Missing: AZURE_LOCAL_GLOB\n"
+                    "  \n"
+                    "  Set in your .env file:\n"
+                    "    AZURE_INPUT_MODE=local\n"
+                    "    AZURE_LOCAL_GLOB=documents/**/*.pdf\n"
+                    "  \n"
+                    "  Or specify via command line:\n"
+                    "    python -m ingestor.cli --glob 'documents/**/*.pdf'\n"
+                )
             return cls(mode=mode, local_glob=local_glob)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -587,10 +691,35 @@ class InputConfig:
             blob_connection_string = os.getenv("AZURE_CONNECTION_STRING")
 
             if not blob_account_url and not blob_connection_string:
-                raise ValueError("AZURE_STORAGE_ACCOUNT is required when AZURE_INPUT_MODE=blob")
+                raise ValueError(
+                    "Azure Storage Account configuration is incomplete.\n"
+                    "  Missing: AZURE_STORAGE_ACCOUNT (or AZURE_CONNECTION_STRING)\n"
+                    "  \n"
+                    "  Set in your .env file:\n"
+                    "    AZURE_STORAGE_ACCOUNT=your-storage-account\n"
+                    "    AZURE_STORAGE_ACCOUNT_KEY=your-key\n"
+                    "  OR\n"
+                    "    AZURE_CONNECTION_STRING=your-connection-string\n"
+                    "  \n"
+                    "  For local development, use local input instead:\n"
+                    "    AZURE_INPUT_MODE=local\n"
+                )
             if not blob_container_in:
-                raise ValueError("AZURE_BLOB_CONTAINER_IN or AZURE_STORAGE_CONTAINER is required when AZURE_INPUT_MODE=blob")
-            
+                raise ValueError(
+                    "Azure Blob Storage input container is required.\n"
+                    "  Missing: AZURE_BLOB_CONTAINER_IN (or AZURE_STORAGE_CONTAINER)\n"
+                    "  \n"
+                    "  Set in your .env file:\n"
+                    "    AZURE_BLOB_CONTAINER_IN=documents-input\n"
+                    "  OR (simple approach):\n"
+                    "    AZURE_STORAGE_CONTAINER=documents\n"
+                    "    (Auto-creates: documents-input, documents-pages, etc.)\n"
+                    "  \n"
+                    "  IMPORTANT: You must create the input container first:\n"
+                    "    az storage container create --name documents-input \\\n"
+                    "      --account-name your-storage-account\n"
+                )
+
             return cls(
                 mode=mode,
                 blob_account_url=blob_account_url,
@@ -866,6 +995,9 @@ class PipelineConfig:
         Returns:
             Configured PipelineConfig instance
 
+        Raises:
+            ValueError: If required configuration is missing or invalid
+
         Example:
             >>> # Load from default .env file
             >>> config = PipelineConfig.from_env()
@@ -884,11 +1016,41 @@ class PipelineConfig:
                     "Install with: pip install python-dotenv"
                 )
 
-        search = SearchConfig.from_env()
-        document_intelligence = DocumentIntelligenceConfig.from_env()
+        # Wrap configuration loading with better error context
+        try:
+            search = SearchConfig.from_env()
+        except ValueError as e:
+            raise ValueError(
+                f"Azure AI Search configuration error:\n{str(e)}\n\n"
+                "Need help? Run: python -m ingestor.scenario_validator"
+            ) from e
+
+        try:
+            document_intelligence = DocumentIntelligenceConfig.from_env()
+        except ValueError as e:
+            raise ValueError(
+                f"Document Intelligence configuration error:\n{str(e)}\n\n"
+                "Need help? Run: python -m ingestor.scenario_validator"
+            ) from e
+
         office_extractor = OfficeExtractorConfig.from_env()
-        azure_openai = AzureOpenAIConfig.from_env()
-        input_config = InputConfig.from_env()
+
+        try:
+            azure_openai = AzureOpenAIConfig.from_env()
+        except ValueError as e:
+            raise ValueError(
+                f"Azure OpenAI configuration error:\n{str(e)}\n\n"
+                "Need help? Run: python -m ingestor.scenario_validator"
+            ) from e
+
+        try:
+            input_config = InputConfig.from_env()
+        except ValueError as e:
+            raise ValueError(
+                f"Input source configuration error:\n{str(e)}\n\n"
+                "Need help? Run: python -m ingestor.scenario_validator"
+            ) from e
+
         # Pass input mode to enable auto-detection of artifacts mode
         artifacts = ArtifactsConfig.from_env(input_mode=input_config.mode)
         azure_credentials = AzureCredentials.from_env()

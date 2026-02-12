@@ -2,6 +2,27 @@
 
 Example scripts and notebooks demonstrating ingestor library usage with the pluggable architecture.
 
+## 📚 NEW: Comprehensive Playbooks
+
+**[Playbooks Directory](playbooks/)** - Production-ready, end-to-end workflow examples:
+- **[01_basic_pdf_ingestion.py](playbooks/01_basic_pdf_ingestion.py)** - Complete beginner workflow with detailed steps
+- **[02_multi_stage_pipeline.py](playbooks/02_multi_stage_pipeline.py)** - Process different document types with optimized settings
+- **[03_error_handling_recovery.py](playbooks/03_error_handling_recovery.py)** - Robust error handling with retry and checkpoint/resume
+- **[04_local_development.py](playbooks/04_local_development.py)** - Complete offline development setup (FREE)
+- **[05_production_deployment.py](playbooks/05_production_deployment.py)** - Enterprise production deployment with Azure
+
+Each playbook includes:
+- ✅ Complete end-to-end workflow
+- ✅ Companion .env.example file with detailed configuration
+- ✅ Error handling and validation
+- ✅ Step-by-step execution with logging
+- ✅ Production best practices
+- ✅ Troubleshooting guides
+
+**[→ Explore Playbooks](playbooks/README.md)**
+
+---
+
 ## 🔌 Pluggable Architecture Examples
 
 The ingestor library supports multiple vector stores and embeddings providers. These examples demonstrate different configurations:
@@ -21,6 +42,15 @@ The ingestor library supports multiple vector stores and embeddings providers. T
 ```
 examples/
 ├── README.md                           # This file
+├── playbooks/                          # 🆕 Production-ready workflow examples
+│   ├── README.md                        # Playbooks guide
+│   ├── 01_basic_pdf_ingestion.py        # Basic end-to-end workflow
+│   ├── .env.basic-pdf.example           # Basic configuration
+│   ├── 02_multi_stage_pipeline.py       # Multi-stage processing
+│   ├── 03_error_handling_recovery.py    # Error handling & retry
+│   ├── 04_local_development.py          # Offline development setup
+│   ├── 05_production_deployment.py      # Production deployment
+│   └── .env.production.example          # Production configuration
 ├── offline_chromadb_huggingface.py    # Fully offline example
 ├── azure_search_cohere.py              # Cloud example with Cohere
 ├── scripts/                            # Python script examples
