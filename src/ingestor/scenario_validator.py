@@ -8,6 +8,7 @@ import os
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 
 class Scenario(str, Enum):
@@ -419,6 +420,18 @@ def validate_current_environment(verbose: bool = False) -> ValidationResult:
 if __name__ == "__main__":
     """Command-line interface for scenario validation."""
     import sys
+
+    # Load .env file if it exists
+    try:
+        from dotenv import load_dotenv
+        env_file = Path('.env')
+        if env_file.exists():
+            load_dotenv(dotenv_path=env_file, override=True)
+            print(f"✓ Loaded environment from: {env_file}\n")
+        else:
+            print(f"⚠️  No .env file found, using system environment variables\n")
+    except ImportError:
+        print(f"⚠️  python-dotenv not installed, using system environment variables\n")
 
     # Check if specific scenario requested
     if len(sys.argv) > 1:
