@@ -420,33 +420,91 @@ def validate_current_environment(verbose: bool = False) -> ValidationResult:
 if __name__ == "__main__":
     """Command-line interface for scenario validation."""
     import sys
+    import argparse
 
-    # Load .env file if it exists
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Validate environment configuration for ingest-o-bot scenarios',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Auto-detect scenario and validate current .env
+  python -m ingestor.scenario_validator
+
+  # Validate specific scenario with current .env
+  python -m ingestor.scenario_validator azure_full
+
+  # Validate specific .env file (no copying needed!)
+  python -m ingestor.scenario_validator --env-file envs/.env.azure-local-input.example
+
+  # Validate specific scenario with specific .env file
+  python -m ingestor.scenario_validator azure_full --env-file envs/.env.azure-local-input.example
+
+Available scenarios:
+  local_dev   - Local development (no Azure)
+  azure_full  - Full Azure stack (DI + OpenAI + Search)
+  offline     - Fully offline (ChromaDB + Hugging Face)
+  hybrid      - Hybrid (Azure Search + local embeddings)
+  azure_cohere - Azure Search + Cohere embeddings
+        """
+    )
+    parser.add_argument(
+        'scenario',
+        nargs='?',
+        help='Scenario to validate (auto-detect if not specified)'
+    )
+    parser.add_argument(
+        '--env-file',
+        '-e',
+        type=str,
+        default='.env',
+        help='Path to .env file (default: .env in current directory)'
+    )
+    parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Show verbose validation details'
+    )
+
+    args = parser.parse_args()
+
+    # Load specified .env file
     try:
         from dotenv import load_dotenv
-        env_file = Path('.env')
+        env_file = Path(args.env_file)
+
+        # Try current directory first
+        if not env_file.exists():
+            # Try parent directory (in case running from src/)
+            parent_env = Path('..') / args.env_file
+            if parent_env.exists():
+                env_file = parent_env
+
         if env_file.exists():
             load_dotenv(dotenv_path=env_file, override=True)
-            print(f"✓ Loaded environment from: {env_file}\n")
+            print(f"✓ Loaded environment from: {env_file.resolve()}\n")
         else:
-            print(f"⚠️  No .env file found, using system environment variables\n")
+            print(f"⚠️  Environment file not found: {args.env_file}")
+            print(f"⚠️  Tried: {env_file.resolve()}")
+            print(f"⚠️  Using system environment variables\n")
     except ImportError:
         print(f"⚠️  python-dotenv not installed, using system environment variables\n")
 
-    # Check if specific scenario requested
-    if len(sys.argv) > 1:
-        scenario_name = sys.argv[1].lower()
+    # Validate scenario
+    if args.scenario:
+        scenario_name = args.scenario.lower()
         try:
             scenario = Scenario(scenario_name)
-            result = ScenarioValidator.validate_scenario(scenario, verbose=True)
+            result = ScenarioValidator.validate_scenario(scenario, verbose=args.verbose or True)
             ScenarioValidator.print_validation_report(result, include_help=True)
             sys.exit(0 if result.valid else 1)
         except ValueError:
-            print(f"Unknown scenario: {scenario_name}")
-            print(f"Available scenarios: {[s.value for s in Scenario]}")
+            print(f"❌ Unknown scenario: {scenario_name}")
+            print(f"\nAvailable scenarios: {', '.join([s.value for s in Scenario])}")
             sys.exit(1)
     else:
         # Auto-detect and validate
-        result = validate_current_environment(verbose=True)
+        result = validate_current_environment(verbose=args.verbose or True)
         ScenarioValidator.print_validation_report(result, include_help=True)
         sys.exit(0 if result.valid else 1)
