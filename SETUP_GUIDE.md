@@ -4,7 +4,12 @@
 
 This guide walks you through everything: installation, choosing your scenario, Azure resource setup (if needed), environment configuration, and running the pipeline.
 
-**✨ New Feature:** Use `--env-file` parameter to switch between multiple configurations without copying files. No more `.env` juggling!
+**✨ New in v2.0:**
+- Generic variable names (removed Azure-specific prefixes for provider-agnostic configuration)
+- See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for upgrading from v1.x
+- Old variable names still work with deprecation warnings
+
+**✨ Feature:** Use `--env-file` parameter to switch between multiple configurations without copying files. No more `.env` juggling!
 
 ---
 
@@ -524,14 +529,17 @@ AZURE_CONNECTION_STRING=your-connection-string
 
 **For Local Input Mode:**
 ```bash
-AZURE_INPUT_MODE=local
+INPUT_MODE=local  # v2.0: Renamed from AZURE_INPUT_MODE
 AZURE_LOCAL_GLOB=./documents/*.pdf
 AZURE_ARTIFACTS_DIR=./artifacts
+
+# Optional: Control artifact storage mode (v2.0)
+ARTIFACTS_MODE=local  # v2.0: Renamed from AZURE_ARTIFACTS_MODE (or 'blob' to store in Azure Blob Storage)
 ```
 
 **For Blob Input Mode (Simple Approach - RECOMMENDED):**
 ```bash
-AZURE_INPUT_MODE=blob
+INPUT_MODE=blob
 AZURE_STORAGE_CONTAINER=my-documents  # Base name for all containers
 
 # Optional: Store artifacts locally for debugging
@@ -540,7 +548,7 @@ AZURE_STORAGE_CONTAINER=my-documents  # Base name for all containers
 
 **For Blob Input Mode (Explicit Approach):**
 ```bash
-AZURE_INPUT_MODE=blob
+INPUT_MODE=blob
 AZURE_BLOB_CONTAINER_IN=my-documents-input
 
 # Output containers
@@ -854,12 +862,14 @@ az storage container list \
 - [ ] `CHROMADB_DIR` (for ChromaDB mode)
 
 **Input Source:**
-- [ ] `AZURE_INPUT_MODE=local` or `AZURE_INPUT_MODE=blob`
+- [ ] `INPUT_MODE=local` or `INPUT_MODE=blob` (v2.0: renamed from `AZURE_INPUT_MODE`)
 - [ ] `AZURE_LOCAL_GLOB=./path/to/files` (for local mode)
 
 **See Also:**
+- [Migration Guide](MIGRATION_GUIDE.md) - v1.x to v2.0 upgrade guide
 - [Configuration Matrix](docs/reference/01_CONFIGURATION_MATRIX.md) - Full variable reference
 - [Environment Guide](docs/guides/ENVIRONMENT_AND_SECRETS.md) - Detailed scenarios
+- [Variable Rename Summary](ENV_VARIABLES_FIX_SUMMARY.md) - All v2.0 renames
 
 ---
 
@@ -918,7 +928,12 @@ scripts\launch_ui.bat                                                # Launch UI
 
 ---
 
-**Last Updated:** February 12, 2026
+**Last Updated:** February 13, 2026
+- **v2.0 Variable Names**: Updated all variable names to new generic format
+  - `AZURE_INPUT_MODE` → `INPUT_MODE`
+  - `AZURE_CHUNKING_*` → `CHUNKING_*`
+  - `AZURE_MAX_WORKERS` → `MAX_WORKERS`
+  - See [ENV_VARIABLES_FIX_SUMMARY.md](ENV_VARIABLES_FIX_SUMMARY.md) for complete list
 - Added installation section with modular requirements.txt structure
 - Added scenario selection guide (8 scenarios)
 - Updated to use --env-file workflow
@@ -926,3 +941,4 @@ scripts\launch_ui.bat                                                # Launch UI
 - Updated environment file references to current structure
 - Added ChromaDB and offline mode setup
 - Added launcher script references (launch_ui.bat/sh)
+- **Backward Compatibility**: Old variable names still work with deprecation warnings

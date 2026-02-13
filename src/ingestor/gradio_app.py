@@ -139,9 +139,9 @@ def load_env_file(file_path: Optional[str] = None, override: bool = True) -> Tup
 
     try:
         if file_path:
-            env_path = Path(file_path)
+            env_path = Path(file_path).resolve()
             if not env_path.exists():
-                return False, f"❌ File not found: {file_path}"
+                return False, f"❌ File not found: {env_path}"
 
             # Load the env file
             load_dotenv(env_path, override=override)
@@ -710,11 +710,11 @@ def get_current_config_display():
         "index_name": os.getenv("AZURE_SEARCH_INDEX", "Not configured"),
         "search_service": os.getenv("AZURE_SEARCH_SERVICE", "Not configured"),
         "storage_account": os.getenv("AZURE_STORAGE_ACCOUNT", "Not configured"),
-        "input_mode": os.getenv("AZURE_INPUT_MODE", "local"),
-        "extractor_mode": os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid"),
-        "local_glob": os.getenv("AZURE_LOCAL_GLOB", ""),
-        "blob_container_in": os.getenv("AZURE_BLOB_CONTAINER_IN", ""),
-        "artifacts_dir": os.getenv("AZURE_ARTIFACTS_DIR", ""),
+        "input_mode": os.getenv("INPUT_MODE", "local"),
+        "extractor_mode": os.getenv("OFFICE_EXTRACTOR_MODE", "hybrid"),
+        "local_glob": os.getenv("LOCAL_INPUT_GLOB", ""),
+        "blob_container_in": os.getenv("BLOB_CONTAINER_IN", ""),
+        "artifacts_dir": os.getenv("ARTIFACTS_DIR", ""),
     }
     return config_info
 
@@ -888,7 +888,7 @@ ENV_HELP_DATA = [
 
     # Input Configuration
     EnvVarHelp(
-        "AZURE_INPUT_MODE",
+        "INPUT_MODE",
         "Input source mode: 'local' (filesystem) or 'blob' (Azure Storage)",
         required=True,
         sensitive=False,
@@ -897,7 +897,7 @@ ENV_HELP_DATA = [
         category="Input/Output"
     ),
     EnvVarHelp(
-        "AZURE_LOCAL_GLOB",
+        "LOCAL_INPUT_GLOB",
         "Glob pattern for local file input (when input_mode=local)",
         required=False,
         sensitive=False,
@@ -905,7 +905,7 @@ ENV_HELP_DATA = [
         category="Input/Output"
     ),
     EnvVarHelp(
-        "AZURE_BLOB_CONTAINER_IN",
+        "BLOB_CONTAINER_IN",
         "Input blob container name (when input_mode=blob)",
         required=False,
         sensitive=False,
@@ -913,7 +913,7 @@ ENV_HELP_DATA = [
         category="Input/Output"
     ),
     EnvVarHelp(
-        "AZURE_ARTIFACTS_DIR",
+        "ARTIFACTS_DIR",
         "Local directory for artifacts (overrides input_mode for output)",
         required=False,
         sensitive=False,
@@ -921,7 +921,7 @@ ENV_HELP_DATA = [
         category="Input/Output"
     ),
     EnvVarHelp(
-        "AZURE_STORE_ARTIFACTS_TO_BLOB",
+        "STORE_ARTIFACTS_TO_BLOB",
         "Force blob storage for artifacts (true/false)",
         required=False,
         sensitive=False,
@@ -943,7 +943,7 @@ ENV_HELP_DATA = [
 
     # Office Processing
     EnvVarHelp(
-        "AZURE_OFFICE_EXTRACTOR_MODE",
+        "OFFICE_EXTRACTOR_MODE",
         "Office extraction mode: 'azure_di', 'markitdown', or 'hybrid' (recommended)",
         required=False,
         sensitive=False,
@@ -1215,36 +1215,36 @@ def generate_env_status_html() -> str:
 SCENARIO_TEMPLATES = {
     "Scenario 1: Azure DI Only": {
         "description": "Best quality with Azure Document Intelligence. DOC support via fallback.",
-        "AZURE_OFFICE_EXTRACTOR_MODE": "azure_di",
-        "AZURE_OFFICE_OFFLINE_FALLBACK": "true",
-        "AZURE_INPUT_MODE": "local",
+        "OFFICE_EXTRACTOR_MODE": "azure_di",
+        "OFFICE_OFFLINE_FALLBACK": "true",
+        "INPUT_MODE": "local",
         "notes": "Requires: Azure DI credentials, MarkItDown for DOC support"
     },
     "Scenario 2: MarkItDown Only (Offline)": {
         "description": "Fully offline processing. No Azure services required for extraction.",
-        "AZURE_OFFICE_EXTRACTOR_MODE": "markitdown",
-        "AZURE_INPUT_MODE": "local",
+        "OFFICE_EXTRACTOR_MODE": "markitdown",
+        "INPUT_MODE": "local",
         "notes": "Requires: MarkItDown installed (pip install markitdown)"
     },
     "Scenario 3: Hybrid Mode (Recommended)": {
         "description": "Azure DI first, automatic fallback. Maximum reliability.",
-        "AZURE_OFFICE_EXTRACTOR_MODE": "hybrid",
-        "AZURE_OFFICE_OFFLINE_FALLBACK": "true",
-        "AZURE_INPUT_MODE": "local",
+        "OFFICE_EXTRACTOR_MODE": "hybrid",
+        "OFFICE_OFFLINE_FALLBACK": "true",
+        "INPUT_MODE": "local",
         "notes": "Recommended for production. Graceful degradation if Azure DI fails."
     },
     "Scenario 4: Blob Input → Blob Output": {
         "description": "Production mode. Read from blob, write to blob.",
-        "AZURE_INPUT_MODE": "blob",
-        "AZURE_OFFICE_EXTRACTOR_MODE": "hybrid",
-        "AZURE_STORE_ARTIFACTS_TO_BLOB": "true",
+        "INPUT_MODE": "blob",
+        "OFFICE_EXTRACTOR_MODE": "hybrid",
+        "STORE_ARTIFACTS_TO_BLOB": "true",
         "notes": "Requires: Storage account, input container with files uploaded"
     },
     "Scenario 5: Local Input → Blob Output": {
         "description": "Test locally but store artifacts in blob storage.",
-        "AZURE_INPUT_MODE": "local",
-        "AZURE_OFFICE_EXTRACTOR_MODE": "hybrid",
-        "AZURE_STORE_ARTIFACTS_TO_BLOB": "true",
+        "INPUT_MODE": "local",
+        "OFFICE_EXTRACTOR_MODE": "hybrid",
+        "STORE_ARTIFACTS_TO_BLOB": "true",
         "notes": "Useful for testing with local files before production deployment"
     },
 }
@@ -1342,17 +1342,17 @@ async def run_pipeline_async(
         sys.stderr = StreamToQueue(log_queue)
 
         # Override environment variables with UI selections
-        os.environ["AZURE_INPUT_MODE"] = input_mode
+        os.environ["INPUT_MODE"] = input_mode
         if input_mode == "local" and local_glob:
-            os.environ["AZURE_LOCAL_GLOB"] = local_glob
+            os.environ["LOCAL_INPUT_GLOB"] = local_glob
         elif input_mode == "blob" and blob_container:
-            os.environ["AZURE_BLOB_CONTAINER_IN"] = blob_container
+            os.environ["BLOB_CONTAINER_IN"] = blob_container
 
-        os.environ["AZURE_OFFICE_EXTRACTOR_MODE"] = extractor_mode
-        os.environ["AZURE_OFFICE_OFFLINE_FALLBACK"] = str(offline_fallback).lower()
-        os.environ["AZURE_DOCUMENT_ACTION"] = document_action
-        os.environ["AZURE_MAX_WORKERS"] = str(max_workers)
-        os.environ["AZURE_OFFICE_VERBOSE"] = str(verbose).lower()
+        os.environ["OFFICE_EXTRACTOR_MODE"] = extractor_mode
+        os.environ["OFFICE_OFFLINE_FALLBACK"] = str(offline_fallback).lower()
+        os.environ["DOCUMENT_ACTION"] = document_action
+        os.environ["MAX_WORKERS"] = str(max_workers)
+        os.environ["OFFICE_VERBOSE"] = str(verbose).lower()
 
         print(f"\n{'='*80}")
         print(f"🚀 Starting Document Indexing Pipeline - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -1869,9 +1869,9 @@ def create_ui():
                     info = f"**{template['description']}**\n\n_{template['notes']}_"
 
                     # Auto-load configuration
-                    new_input_mode = template.get("AZURE_INPUT_MODE", "local")
-                    new_extractor = template.get("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
-                    new_fallback = template.get("AZURE_OFFICE_OFFLINE_FALLBACK", "true") == "true"
+                    new_input_mode = template.get("INPUT_MODE", "local")
+                    new_extractor = template.get("OFFICE_EXTRACTOR_MODE", "hybrid")
+                    new_fallback = template.get("OFFICE_OFFLINE_FALLBACK", "true") == "true"
 
                     return info, new_input_mode, new_extractor, new_fallback
 
@@ -2139,19 +2139,19 @@ def create_ui():
                         effective_glob = ""
 
                     # Update environment variables at runtime
-                    os.environ["AZURE_INPUT_MODE"] = inp_mode
-                    os.environ["AZURE_OFFICE_EXTRACTOR_MODE"] = extr_mode
-                    os.environ["AZURE_OFFICE_OFFLINE_FALLBACK"] = str(off_fallback).lower()
-                    os.environ["AZURE_DOCUMENT_ACTION"] = doc_action
-                    os.environ["AZURE_MAX_WORKERS"] = str(int(workers))
-                    os.environ["AZURE_OFFICE_VERBOSE"] = str(verb).lower()
+                    os.environ["INPUT_MODE"] = inp_mode
+                    os.environ["OFFICE_EXTRACTOR_MODE"] = extr_mode
+                    os.environ["OFFICE_OFFLINE_FALLBACK"] = str(off_fallback).lower()
+                    os.environ["DOCUMENT_ACTION"] = doc_action
+                    os.environ["MAX_WORKERS"] = str(int(workers))
+                    os.environ["OFFICE_VERBOSE"] = str(verb).lower()
 
                     if inp_mode == "local":
-                        os.environ["AZURE_LOCAL_GLOB"] = effective_glob
+                        os.environ["LOCAL_INPUT_GLOB"] = effective_glob
                     else:
-                        os.environ["AZURE_BLOB_CONTAINER_IN"] = blob_container
+                        os.environ["BLOB_CONTAINER_IN"] = blob_container
                         if blob_pre:
-                            os.environ["AZURE_BLOB_PREFIX"] = blob_pre
+                            os.environ["BLOB_PREFIX"] = blob_pre
 
                     # Call the actual pipeline runner and yield from it
                     # (run_pipeline_sync is a generator, so we need to yield from it)

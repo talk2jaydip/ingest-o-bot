@@ -155,7 +155,7 @@ def check_production_readiness() -> Dict[str, Any]:
         logger.warning("   Consider using ARTIFACTS_MODE=blob for production")
 
     # Check performance settings
-    max_workers = int(os.getenv('AZURE_CHUNKING_MAX_WORKERS', '4'))
+    max_workers = int(os.getenv('MAX_WORKERS', '4'))
     if max_workers > 16:
         logger.warning(f"⚠️  MAX_WORKERS={max_workers} may cause rate limiting")
 
@@ -165,8 +165,8 @@ def check_production_readiness() -> Dict[str, Any]:
     logger.info(f"  Input Mode: {input_mode}")
     logger.info(f"  Artifacts Mode: {artifacts_mode}")
     logger.info(f"  Max Workers: {max_workers}")
-    logger.info(f"  Office Extractor: {os.getenv('AZURE_OFFICE_EXTRACTOR_MODE', 'hybrid')}")
-    logger.info(f"  Media Describer: {os.getenv('AZURE_MEDIA_DESCRIBER', 'disabled')}")
+    logger.info(f"  Office Extractor: {os.getenv('EXTRACTION_MODE', 'hybrid')}")
+    logger.info(f"  Media Describer: {os.getenv('MEDIA_DESCRIBER_MODE', 'disabled')}")
     logger.info("")
 
     return {
@@ -396,7 +396,7 @@ async def main():
         logger.info("")
 
         logger.info("Optimization:")
-        logger.info("- Adjust AZURE_CHUNKING_MAX_WORKERS based on throughput needs")
+        logger.info("- Adjust MAX_WORKERS based on throughput needs")
         logger.info("- Consider batch processing during off-peak hours")
         logger.info("- Implement document deduplication if needed")
         logger.info("- Review chunk sizes for your query patterns")

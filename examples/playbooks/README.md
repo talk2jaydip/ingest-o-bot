@@ -306,9 +306,9 @@ python 04_local_development.py
 - Performance statistics
 
 **Cost optimization:**
-- Consider `AZURE_OFFICE_EXTRACTOR_MODE=hybrid` for fallback
-- Use `AZURE_MEDIA_DESCRIBER=disabled` if not needed
-- Adjust `AZURE_CHUNKING_MAX_WORKERS` to balance speed vs cost
+- Consider `EXTRACTION_MODE=hybrid` for fallback
+- Use `MEDIA_DESCRIBER_MODE=disabled` if not needed
+- Adjust `MAX_WORKERS` to balance speed vs cost
 - Process during off-peak hours for lower costs
 
 ```bash
@@ -459,17 +459,17 @@ HUGGINGFACE_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 
 ### Production (Maximum Throughput)
 ```bash
-AZURE_CHUNKING_MAX_WORKERS=8
+MAX_WORKERS=8
 AZURE_DI_MAX_CONCURRENCY=10
 AZURE_OPENAI_MAX_CONCURRENCY=15
-AZURE_EMBED_BATCH_SIZE=256
+EMBEDDING_BATCH_SIZE=256
 ```
 
 ### Cost-Optimized
 ```bash
 EMBEDDINGS_MODE=huggingface          # Free embeddings
-AZURE_OFFICE_EXTRACTOR_MODE=hybrid   # Fallback to free
-AZURE_MEDIA_DESCRIBER=disabled       # Skip expensive descriptions
+EXTRACTION_MODE=hybrid               # Fallback to free
+MEDIA_DESCRIBER_MODE=disabled        # Skip expensive descriptions
 AZURE_TABLE_SUMMARIES=false          # Skip extra API calls
 ```
 

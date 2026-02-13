@@ -74,13 +74,13 @@ Examples:
         dest="pdf_path",
         type=str,
         metavar="PATH",
-        help="Path to file to process (overrides AZURE_LOCAL_GLOB)"
+        help="Path to file to process (overrides LOCAL_INPUT_GLOB)"
     )
     parser.add_argument(
         "--glob",
         type=str,
         metavar="PATTERN",
-        help="Glob pattern for local files (overrides AZURE_LOCAL_GLOB), e.g., 'documents/*.pdf'"
+        help="Glob pattern for local files (overrides LOCAL_INPUT_GLOB), e.g., 'documents/*.pdf'"
     )
     parser.add_argument(
         "--action",
@@ -149,12 +149,13 @@ Examples:
     args = parser.parse_args()
 
     # Load environment variables from specified .env file
-    env_file_path = Path(args.env_file)
+    env_file_path = Path(args.env_file).resolve()
     if env_file_path.exists():
         load_dotenv(dotenv_path=env_file_path, override=True)
         print(f"✓ Loaded environment from: {env_file_path}")
     else:
         print(f"⚠️  Environment file not found: {env_file_path}")
+        print(f"⚠️  (Searched at: {env_file_path})")
         print(f"⚠️  Continuing with system environment variables...")
 
     # Validate environment parameters for typos and issues
@@ -578,7 +579,7 @@ Examples:
             logger.info("To ingest documents, use:")
             logger.info("  --glob 'path/to/files/*.pdf'")
             logger.info("  --pdf 'path/to/file.pdf'")
-            logger.info("  Or set AZURE_LOCAL_GLOB or AZURE_BLOB_CONTAINER_IN in .env")
+            logger.info("  Or set LOCAL_INPUT_GLOB or BLOB_CONTAINER_IN in .env")
             logger.info("")
             sys.exit(0)
 
@@ -604,7 +605,16 @@ Examples:
             logger.info(f"Overriding input with glob pattern: {args.glob}")
             config.input.mode = InputMode.LOCAL
             config.input.local_glob = args.glob
-        
+
+        # Validate that local mode has input source (either from CLI or env)
+        if config.input.mode == InputMode.LOCAL and not config.input.local_glob:
+            logger.error("ERROR: Local input mode requires either:")
+            logger.error("  1. Command-line argument: --glob 'path/to/files/*.pdf' or --pdf 'file.pdf'")
+            logger.error("  2. Environment variable: LOCAL_INPUT_GLOB=documents/**/*.pdf")
+            logger.error("")
+            logger.error("Please specify input files using one of these methods.")
+            sys.exit(1)
+
         # Override document action if specified
         if args.action:
             config.document_action = DocumentAction(args.action)
@@ -643,9 +653,9 @@ Examples:
                 logger.error("   --pdf 'path/to/file.pdf'      (process single file)")
                 logger.error("")
                 logger.error("2. Environment variables in .env:")
-                logger.error("   AZURE_LOCAL_GLOB=path/to/files/*.pdf")
+                logger.error("   LOCAL_INPUT_GLOB=path/to/files/*.pdf")
                 logger.error("   OR")
-                logger.error("   AZURE_BLOB_CONTAINER_IN=your-container-name")
+                logger.error("   BLOB_CONTAINER_IN=your-container-name")
                 logger.error("")
                 logger.error("3. Index operations only (without ingestion):")
                 logger.error("   --setup-index   (create/update index, then ingest)")

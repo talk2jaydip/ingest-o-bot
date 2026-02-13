@@ -218,7 +218,7 @@ class DocumentIntelligenceConfig:
         max_concurrency = int(os.getenv("AZURE_DI_MAX_CONCURRENCY", "3"))
 
         # Check if Document Intelligence is actually needed
-        office_mode = os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
+        office_mode = os.getenv("EXTRACTION_MODE") or os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
 
         if not endpoint:
             if office_mode == "markitdown":
@@ -233,10 +233,10 @@ class DocumentIntelligenceConfig:
                     "  1. Use Azure Document Intelligence (recommended):\n"
                     "       AZURE_DOC_INT_ENDPOINT=https://your-di.cognitiveservices.azure.com/\n"
                     "       AZURE_DOC_INT_KEY=your-key\n"
-                    "       AZURE_OFFICE_EXTRACTOR_MODE=hybrid (or azure_di)\n"
+                    "       EXTRACTION_MODE=hybrid (or azure_di)\n"
                     "  \n"
                     "  2. Use offline processing only (no Azure DI):\n"
-                    "       AZURE_OFFICE_EXTRACTOR_MODE=markitdown\n"
+                    "       EXTRACTION_MODE=markitdown\n"
                     "       (No AZURE_DOC_INT_ENDPOINT needed)\n"
                     "  \n"
                     "  See: envs/.env.scenarios.example for configuration examples"
@@ -276,21 +276,60 @@ class OfficeExtractorConfig:
         - markitdown: MarkItDown only, no Azure DI (offline_fallback ignored)
         - hybrid: Try Azure DI first, fallback based on offline_fallback flag (default)
         """
-        # Phase 2: All three modes supported (azure_di, markitdown, hybrid)
-        mode_str = os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
+        logger = get_logger(__name__)
+
+        # EXTRACTION_MODE (formerly AZURE_OFFICE_EXTRACTOR_MODE)
+        mode_str = os.getenv("EXTRACTION_MODE") or os.getenv("AZURE_OFFICE_EXTRACTOR_MODE", "hybrid")
+        if os.getenv("AZURE_OFFICE_EXTRACTOR_MODE") and not os.getenv("EXTRACTION_MODE"):
+            logger.warning(
+                "AZURE_OFFICE_EXTRACTOR_MODE is deprecated. Use EXTRACTION_MODE instead. "
+                "Support for AZURE_OFFICE_EXTRACTOR_MODE will be removed in v2.0."
+            )
         mode = OfficeExtractorMode(mode_str)
 
-        # Phase 2: Fallback flag (only applies to HYBRID mode)
-        offline_fallback = os.getenv("AZURE_OFFICE_OFFLINE_FALLBACK", "true").lower() == "true"
-        libreoffice_path = os.getenv("AZURE_OFFICE_LIBREOFFICE_PATH")
+        # EXTRACTION_OFFLINE_FALLBACK (formerly AZURE_OFFICE_OFFLINE_FALLBACK)
+        fallback_str = os.getenv("EXTRACTION_OFFLINE_FALLBACK") or os.getenv("AZURE_OFFICE_OFFLINE_FALLBACK", "true")
+        if os.getenv("AZURE_OFFICE_OFFLINE_FALLBACK") and not os.getenv("EXTRACTION_OFFLINE_FALLBACK"):
+            logger.warning(
+                "AZURE_OFFICE_OFFLINE_FALLBACK is deprecated. Use EXTRACTION_OFFLINE_FALLBACK instead. "
+                "Support for AZURE_OFFICE_OFFLINE_FALLBACK will be removed in v2.0."
+            )
+        offline_fallback = fallback_str.lower() == "true"
 
-        # Phase 3: Equation extraction (now active)
-        equation_extraction = os.getenv("AZURE_OFFICE_EQUATION_EXTRACTION", "false").lower() == "true"
+        # EXTRACTION_LIBREOFFICE_PATH (formerly AZURE_OFFICE_LIBREOFFICE_PATH)
+        libreoffice_path = os.getenv("EXTRACTION_LIBREOFFICE_PATH") or os.getenv("AZURE_OFFICE_LIBREOFFICE_PATH")
+        if os.getenv("AZURE_OFFICE_LIBREOFFICE_PATH") and not os.getenv("EXTRACTION_LIBREOFFICE_PATH"):
+            logger.warning(
+                "AZURE_OFFICE_LIBREOFFICE_PATH is deprecated. Use EXTRACTION_LIBREOFFICE_PATH instead. "
+                "Support for AZURE_OFFICE_LIBREOFFICE_PATH will be removed in v2.0."
+            )
 
-        max_file_size_mb = int(os.getenv("AZURE_OFFICE_MAX_FILE_SIZE_MB", "100"))
+        # EXTRACTION_EQUATIONS_ENABLED (formerly AZURE_OFFICE_EQUATION_EXTRACTION)
+        equation_str = os.getenv("EXTRACTION_EQUATIONS_ENABLED") or os.getenv("AZURE_OFFICE_EQUATION_EXTRACTION", "false")
+        if os.getenv("AZURE_OFFICE_EQUATION_EXTRACTION") and not os.getenv("EXTRACTION_EQUATIONS_ENABLED"):
+            logger.warning(
+                "AZURE_OFFICE_EQUATION_EXTRACTION is deprecated. Use EXTRACTION_EQUATIONS_ENABLED instead. "
+                "Support for AZURE_OFFICE_EQUATION_EXTRACTION will be removed in v2.0."
+            )
+        equation_extraction = equation_str.lower() == "true"
 
-        # Verbose logging for debugging
-        verbose = os.getenv("AZURE_OFFICE_VERBOSE", "false").lower() == "true"
+        # EXTRACTION_MAX_FILE_SIZE_MB (formerly AZURE_OFFICE_MAX_FILE_SIZE_MB)
+        max_size_str = os.getenv("EXTRACTION_MAX_FILE_SIZE_MB") or os.getenv("AZURE_OFFICE_MAX_FILE_SIZE_MB", "100")
+        if os.getenv("AZURE_OFFICE_MAX_FILE_SIZE_MB") and not os.getenv("EXTRACTION_MAX_FILE_SIZE_MB"):
+            logger.warning(
+                "AZURE_OFFICE_MAX_FILE_SIZE_MB is deprecated. Use EXTRACTION_MAX_FILE_SIZE_MB instead. "
+                "Support for AZURE_OFFICE_MAX_FILE_SIZE_MB will be removed in v2.0."
+            )
+        max_file_size_mb = int(max_size_str)
+
+        # EXTRACTION_VERBOSE (formerly AZURE_OFFICE_VERBOSE)
+        verbose_str = os.getenv("EXTRACTION_VERBOSE") or os.getenv("AZURE_OFFICE_VERBOSE", "false")
+        if os.getenv("AZURE_OFFICE_VERBOSE") and not os.getenv("EXTRACTION_VERBOSE"):
+            logger.warning(
+                "AZURE_OFFICE_VERBOSE is deprecated. Use EXTRACTION_VERBOSE instead. "
+                "Support for AZURE_OFFICE_VERBOSE will be removed in v2.0."
+            )
+        verbose = verbose_str.lower() == "true"
 
         return cls(
             mode=mode,
@@ -382,6 +421,9 @@ class AzureOpenAIConfig:
     emb_dimensions: Optional[int] = None  # Custom dimensions for text-embedding-3-* models
     chat_deployment: Optional[str] = None
     chat_model_name: Optional[str] = None
+    vision_deployment: Optional[str] = None  # For GPT-4o vision (media describer)
+    vision_model_name: Optional[str] = None
+    vision_api_version: Optional[str] = None  # Separate API version for vision (optional)
     max_concurrency: int = 5
     max_retries: int = 3  # Retry attempts for API calls
     
@@ -402,6 +444,11 @@ class AzureOpenAIConfig:
         chat_deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
         chat_model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") or os.getenv("AZURE_OPENAI_MODEL")
 
+        # Vision model for media describer (GPT-4o with vision capability)
+        vision_deployment = os.getenv("AZURE_OPENAI_VISION_DEPLOYMENT")
+        vision_model_name = os.getenv("AZURE_OPENAI_VISION_MODEL")
+        vision_api_version = os.getenv("AZURE_OPENAI_VISION_API_VERSION")  # Optional separate API version for vision
+
         max_concurrency = int(os.getenv("AZURE_OPENAI_MAX_CONCURRENCY", "5"))
         max_retries = int(os.getenv("AZURE_OPENAI_MAX_RETRIES", "3"))
 
@@ -420,6 +467,9 @@ class AzureOpenAIConfig:
                     emb_dimensions=emb_dimensions,
                     chat_deployment=chat_deployment,
                     chat_model_name=chat_model_name,
+                    vision_deployment=vision_deployment,
+                    vision_model_name=vision_model_name,
+                    vision_api_version=vision_api_version,
                     max_concurrency=max_concurrency,
                     max_retries=max_retries
                 )
@@ -474,6 +524,9 @@ class AzureOpenAIConfig:
             emb_dimensions=emb_dimensions,
             chat_deployment=chat_deployment,
             chat_model_name=chat_model_name,
+            vision_deployment=vision_deployment,
+            vision_model_name=vision_model_name,
+            vision_api_version=vision_api_version,
             max_concurrency=max_concurrency,
             max_retries=max_retries
         )
@@ -648,27 +701,31 @@ class InputConfig:
     blob_prefix: Optional[str] = None
     blob_key: Optional[str] = None
     blob_connection_string: Optional[str] = None
-    
+
     @classmethod
     def from_env(cls) -> "InputConfig":
         """Load from environment variables."""
-        mode_str = os.getenv("AZURE_INPUT_MODE", "local").lower()
-        mode = InputMode(mode_str)
+        logger = get_logger(__name__)
+
+        # INPUT_MODE (formerly AZURE_INPUT_MODE)
+        mode_str = os.getenv("INPUT_MODE") or os.getenv("AZURE_INPUT_MODE", "local")
+        if os.getenv("AZURE_INPUT_MODE") and not os.getenv("INPUT_MODE"):
+            logger.warning(
+                "AZURE_INPUT_MODE is deprecated. Use INPUT_MODE instead. "
+                "Support for AZURE_INPUT_MODE will be removed in v2.0."
+            )
+        mode = InputMode(mode_str.lower())
 
         if mode == InputMode.LOCAL:
-            local_glob = os.getenv("AZURE_LOCAL_GLOB")
-            if not local_glob:
-                raise ValueError(
-                    "Local input configuration is incomplete.\n"
-                    "  Missing: AZURE_LOCAL_GLOB\n"
-                    "  \n"
-                    "  Set in your .env file:\n"
-                    "    AZURE_INPUT_MODE=local\n"
-                    "    AZURE_LOCAL_GLOB=documents/**/*.pdf\n"
-                    "  \n"
-                    "  Or specify via command line:\n"
-                    "    python -m ingestor.cli --glob 'documents/**/*.pdf'\n"
+            # LOCAL_INPUT_GLOB (formerly AZURE_LOCAL_GLOB)
+            local_glob = os.getenv("LOCAL_INPUT_GLOB") or os.getenv("AZURE_LOCAL_GLOB")
+            if os.getenv("AZURE_LOCAL_GLOB") and not os.getenv("LOCAL_INPUT_GLOB"):
+                logger.warning(
+                    "AZURE_LOCAL_GLOB is deprecated. Use LOCAL_INPUT_GLOB instead. "
+                    "Support for AZURE_LOCAL_GLOB will be removed in v2.0."
                 )
+            # Note: local_glob can be None here - it will be validated later
+            # in the CLI after checking if --glob or --pdf was provided
             return cls(mode=mode, local_glob=local_glob)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -745,7 +802,7 @@ class ArtifactsConfig:
     blob_container_citations: Optional[str] = None  # Separate container for per-page PDFs (citations)
     blob_key: Optional[str] = None
     blob_connection_string: Optional[str] = None
-    
+
     @classmethod
     def from_env(cls, input_mode: Optional[InputMode] = None) -> "ArtifactsConfig":
         """Load from environment variables.
@@ -754,49 +811,77 @@ class ArtifactsConfig:
             input_mode: Optional input mode to auto-detect artifacts mode from.
 
         SIMPLIFIED Logic:
-        1. If AZURE_ARTIFACTS_DIR is set → LOCAL storage at that directory
+        1. If LOCAL_ARTIFACTS_DIR is set → LOCAL storage at that directory
            (Overrides input_mode - useful for debugging blob inputs locally)
         2. Otherwise → Follow input_mode (local input → local artifacts, blob input → blob artifacts)
         3. Default → LOCAL if no input_mode provided
 
-        Deprecated flags (backwards compatibility, but prefer AZURE_ARTIFACTS_DIR):
-        - AZURE_ARTIFACTS_MODE: Still supported for explicit control
+        Deprecated flags (backwards compatibility):
+        - AZURE_ARTIFACTS_DIR: Still supported (renamed to LOCAL_ARTIFACTS_DIR)
+        - AZURE_ARTIFACTS_MODE: Still supported (renamed to ARTIFACTS_MODE)
         - AZURE_STORE_ARTIFACTS_TO_BLOB: Still supported but redundant with input_mode
         """
-        # Check if AZURE_ARTIFACTS_DIR is explicitly set (HIGHEST PRIORITY - OVERRIDE)
-        artifacts_dir = os.getenv("AZURE_ARTIFACTS_DIR")
+        logger = get_logger(__name__)
+
+        # LOCAL_ARTIFACTS_DIR (formerly AZURE_ARTIFACTS_DIR) - HIGHEST PRIORITY - OVERRIDE
+        artifacts_dir = os.getenv("LOCAL_ARTIFACTS_DIR") or os.getenv("AZURE_ARTIFACTS_DIR")
+        if os.getenv("AZURE_ARTIFACTS_DIR") and not os.getenv("LOCAL_ARTIFACTS_DIR"):
+            logger.warning(
+                "AZURE_ARTIFACTS_DIR is deprecated. Use LOCAL_ARTIFACTS_DIR instead. "
+                "Support for AZURE_ARTIFACTS_DIR will be removed in v2.0."
+            )
 
         if artifacts_dir:
-            # AZURE_ARTIFACTS_DIR explicitly set - use local storage
+            # Artifacts directory explicitly set - use local storage
             mode = ArtifactsMode.LOCAL
-            get_logger(__name__).info(
+            logger.info(
                 f"Using local artifacts storage: {artifacts_dir} "
                 f"(overrides input_mode={input_mode.value if input_mode else 'not set'})"
             )
         else:
             # Check deprecated flags for backwards compatibility
-            mode_str = os.getenv("AZURE_ARTIFACTS_MODE")
-            force_blob = os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "").lower() == "true"
+            # ARTIFACTS_MODE (formerly AZURE_ARTIFACTS_MODE)
+            mode_str = os.getenv("ARTIFACTS_MODE") or os.getenv("AZURE_ARTIFACTS_MODE")
+            if os.getenv("AZURE_ARTIFACTS_MODE") and not os.getenv("ARTIFACTS_MODE"):
+                logger.warning(
+                    "AZURE_ARTIFACTS_MODE is deprecated. Use ARTIFACTS_MODE instead. "
+                    "Support for AZURE_ARTIFACTS_MODE will be removed in v2.0."
+                )
+
+            # STORE_ARTIFACTS_TO_BLOB (formerly AZURE_STORE_ARTIFACTS_TO_BLOB)
+            force_blob_str = os.getenv("STORE_ARTIFACTS_TO_BLOB") or os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "")
+            if os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB") and not os.getenv("STORE_ARTIFACTS_TO_BLOB"):
+                logger.warning(
+                    "AZURE_STORE_ARTIFACTS_TO_BLOB is deprecated. Use STORE_ARTIFACTS_TO_BLOB instead. "
+                    "Support for AZURE_STORE_ARTIFACTS_TO_BLOB will be removed in v2.0."
+                )
+            force_blob = force_blob_str.lower() == "true"
 
             if mode_str:
                 # Explicit mode set (deprecated but supported)
                 mode = ArtifactsMode(mode_str.lower())
-                get_logger(__name__).info(f"Using AZURE_ARTIFACTS_MODE={mode.value} (deprecated, prefer removing this flag)")
+                logger.info(f"Using ARTIFACTS_MODE={mode.value} (deprecated, prefer removing this flag)")
             elif force_blob:
                 # Override flag set (deprecated but supported)
                 mode = ArtifactsMode.BLOB
-                get_logger(__name__).info("Using AZURE_STORE_ARTIFACTS_TO_BLOB=true (deprecated, prefer removing this flag)")
+                logger.info("Using STORE_ARTIFACTS_TO_BLOB=true (deprecated, prefer removing this flag)")
             elif input_mode:
                 # Follow input mode (RECOMMENDED approach)
                 mode = ArtifactsMode.BLOB if input_mode == InputMode.BLOB else ArtifactsMode.LOCAL
-                get_logger(__name__).info(f"Artifacts storage follows input mode: {mode.value}")
+                logger.info(f"Artifacts storage follows input mode: {mode.value}")
             else:
                 # Default to local
                 mode = ArtifactsMode.LOCAL
-                get_logger(__name__).info("Using default: local artifacts storage")
+                logger.info("Using default: local artifacts storage")
 
         if mode == ArtifactsMode.LOCAL:
-            local_dir = os.getenv("AZURE_ARTIFACTS_DIR", "./artifacts")
+            # LOCAL_ARTIFACTS_DIR (formerly AZURE_ARTIFACTS_DIR)
+            local_dir = os.getenv("LOCAL_ARTIFACTS_DIR") or os.getenv("AZURE_ARTIFACTS_DIR", "./artifacts")
+            if os.getenv("AZURE_ARTIFACTS_DIR") and not os.getenv("LOCAL_ARTIFACTS_DIR"):
+                logger.warning(
+                    "AZURE_ARTIFACTS_DIR is deprecated. Use LOCAL_ARTIFACTS_DIR instead. "
+                    "Support for AZURE_ARTIFACTS_DIR will be removed in v2.0."
+                )
             return cls(mode=mode, local_dir=local_dir)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -804,11 +889,16 @@ class ArtifactsConfig:
                 blob_account_url = f"https://{storage_account}.blob.core.windows.net"
             else:
                 blob_account_url = os.getenv("AZURE_BLOB_ACCOUNT_URL")
-            
-            # Container prefix (e.g., "myproject")
-            blob_container_prefix = os.getenv("AZURE_BLOB_CONTAINER_PREFIX", "")
 
-            # Base container names (will be prefixed if AZURE_BLOB_CONTAINER_PREFIX is set)
+            # BLOB_CONTAINER_PREFIX (formerly AZURE_BLOB_CONTAINER_PREFIX)
+            blob_container_prefix = os.getenv("BLOB_CONTAINER_PREFIX") or os.getenv("AZURE_BLOB_CONTAINER_PREFIX", "")
+            if os.getenv("AZURE_BLOB_CONTAINER_PREFIX") and not os.getenv("BLOB_CONTAINER_PREFIX"):
+                logger.warning(
+                    "AZURE_BLOB_CONTAINER_PREFIX is deprecated. Use BLOB_CONTAINER_PREFIX instead. "
+                    "Support for AZURE_BLOB_CONTAINER_PREFIX will be removed in v2.0."
+                )
+
+            # Base container names (will be prefixed if BLOB_CONTAINER_PREFIX is set)
             base_pages = os.getenv("AZURE_BLOB_CONTAINER_OUT_PAGES")
             base_chunks = os.getenv("AZURE_BLOB_CONTAINER_OUT_CHUNKS")
             base_images = os.getenv("AZURE_BLOB_CONTAINER_OUT_IMAGES")
@@ -863,7 +953,7 @@ class ArtifactsConfig:
 @dataclass
 class ChunkingConfig:
     """Text chunking configuration.
-    
+
     These parameters control how documents are split into searchable chunks.
     Defaults match the original prepdocslib implementation.
     """
@@ -872,22 +962,85 @@ class ChunkingConfig:
     overlap_percent: int = 10  # Percent overlap between chunks for semantic continuity
     cross_page_overlap: bool = False  # If True, allow overlap across page boundaries for text-only chunks
     disable_char_limit: bool = False  # If True, ignore char limit during chunking
-    
+    table_legend_buffer: int = 100  # Buffer for table legend/caption context (characters)
+    absolute_max_tokens: int = 8000  # Absolute maximum tokens per chunk (safety limit)
+
     @classmethod
     def from_env(cls) -> "ChunkingConfig":
         """Load from environment variables."""
-        max_chars = int(os.getenv("AZURE_CHUNKING_MAX_CHARS", "1000"))
-        max_tokens = int(os.getenv("AZURE_CHUNKING_MAX_TOKENS", "500"))
-        overlap_percent = int(os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT", "10"))
-        cross_page_overlap = os.getenv("AZURE_CHUNKING_CROSS_PAGE_OVERLAP", "false").lower() == "true"
-        disable_char_limit = os.getenv("AZURE_CHUNKING_DISABLE_CHAR_LIMIT", "false").lower() == "true"
-        
+        logger = get_logger(__name__)
+
+        # CHUNKING_MAX_CHARS (formerly AZURE_CHUNKING_MAX_CHARS)
+        max_chars_str = os.getenv("CHUNKING_MAX_CHARS") or os.getenv("AZURE_CHUNKING_MAX_CHARS", "1000")
+        if os.getenv("AZURE_CHUNKING_MAX_CHARS") and not os.getenv("CHUNKING_MAX_CHARS"):
+            logger.warning(
+                "AZURE_CHUNKING_MAX_CHARS is deprecated. Use CHUNKING_MAX_CHARS instead. "
+                "Support for AZURE_CHUNKING_MAX_CHARS will be removed in v2.0."
+            )
+        max_chars = int(max_chars_str)
+
+        # CHUNKING_MAX_TOKENS (formerly AZURE_CHUNKING_MAX_TOKENS)
+        max_tokens_str = os.getenv("CHUNKING_MAX_TOKENS") or os.getenv("AZURE_CHUNKING_MAX_TOKENS", "500")
+        if os.getenv("AZURE_CHUNKING_MAX_TOKENS") and not os.getenv("CHUNKING_MAX_TOKENS"):
+            logger.warning(
+                "AZURE_CHUNKING_MAX_TOKENS is deprecated. Use CHUNKING_MAX_TOKENS instead. "
+                "Support for AZURE_CHUNKING_MAX_TOKENS will be removed in v2.0."
+            )
+        max_tokens = int(max_tokens_str)
+
+        # CHUNKING_OVERLAP_PERCENT (formerly AZURE_CHUNKING_OVERLAP_PERCENT)
+        overlap_percent_str = os.getenv("CHUNKING_OVERLAP_PERCENT") or os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT", "10")
+        if os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT") and not os.getenv("CHUNKING_OVERLAP_PERCENT"):
+            logger.warning(
+                "AZURE_CHUNKING_OVERLAP_PERCENT is deprecated. Use CHUNKING_OVERLAP_PERCENT instead. "
+                "Support for AZURE_CHUNKING_OVERLAP_PERCENT will be removed in v2.0."
+            )
+        overlap_percent = int(overlap_percent_str)
+
+        # CHUNKING_CROSS_PAGE_OVERLAP (formerly AZURE_CHUNKING_CROSS_PAGE_OVERLAP)
+        cross_page_str = os.getenv("CHUNKING_CROSS_PAGE_OVERLAP") or os.getenv("AZURE_CHUNKING_CROSS_PAGE_OVERLAP", "false")
+        if os.getenv("AZURE_CHUNKING_CROSS_PAGE_OVERLAP") and not os.getenv("CHUNKING_CROSS_PAGE_OVERLAP"):
+            logger.warning(
+                "AZURE_CHUNKING_CROSS_PAGE_OVERLAP is deprecated. Use CHUNKING_CROSS_PAGE_OVERLAP instead. "
+                "Support for AZURE_CHUNKING_CROSS_PAGE_OVERLAP will be removed in v2.0."
+            )
+        cross_page_overlap = cross_page_str.lower() == "true"
+
+        # CHUNKING_DISABLE_CHAR_LIMIT (formerly AZURE_CHUNKING_DISABLE_CHAR_LIMIT)
+        disable_char_str = os.getenv("CHUNKING_DISABLE_CHAR_LIMIT") or os.getenv("AZURE_CHUNKING_DISABLE_CHAR_LIMIT", "false")
+        if os.getenv("AZURE_CHUNKING_DISABLE_CHAR_LIMIT") and not os.getenv("CHUNKING_DISABLE_CHAR_LIMIT"):
+            logger.warning(
+                "AZURE_CHUNKING_DISABLE_CHAR_LIMIT is deprecated. Use CHUNKING_DISABLE_CHAR_LIMIT instead. "
+                "Support for AZURE_CHUNKING_DISABLE_CHAR_LIMIT will be removed in v2.0."
+            )
+        disable_char_limit = disable_char_str.lower() == "true"
+
+        # CHUNKING_TABLE_LEGEND_BUFFER (formerly AZURE_CHUNKING_TABLE_LEGEND_BUFFER)
+        table_legend_str = os.getenv("CHUNKING_TABLE_LEGEND_BUFFER") or os.getenv("AZURE_CHUNKING_TABLE_LEGEND_BUFFER", "100")
+        if os.getenv("AZURE_CHUNKING_TABLE_LEGEND_BUFFER") and not os.getenv("CHUNKING_TABLE_LEGEND_BUFFER"):
+            logger.warning(
+                "AZURE_CHUNKING_TABLE_LEGEND_BUFFER is deprecated. Use CHUNKING_TABLE_LEGEND_BUFFER instead. "
+                "Support for AZURE_CHUNKING_TABLE_LEGEND_BUFFER will be removed in v2.0."
+            )
+        table_legend_buffer = int(table_legend_str)
+
+        # CHUNKING_ABSOLUTE_MAX_TOKENS (formerly AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS)
+        absolute_max_str = os.getenv("CHUNKING_ABSOLUTE_MAX_TOKENS") or os.getenv("AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS", "8000")
+        if os.getenv("AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS") and not os.getenv("CHUNKING_ABSOLUTE_MAX_TOKENS"):
+            logger.warning(
+                "AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS is deprecated. Use CHUNKING_ABSOLUTE_MAX_TOKENS instead. "
+                "Support for AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS will be removed in v2.0."
+            )
+        absolute_max_tokens = int(absolute_max_str)
+
         return cls(
             max_chars=max_chars,
             max_tokens=max_tokens,
             overlap_percent=overlap_percent,
             cross_page_overlap=cross_page_overlap,
-            disable_char_limit=disable_char_limit
+            disable_char_limit=disable_char_limit,
+            table_legend_buffer=table_legend_buffer,
+            absolute_max_tokens=absolute_max_tokens
         )
 
 
@@ -908,16 +1061,79 @@ class PerformanceConfig:
     @classmethod
     def from_env(cls) -> "PerformanceConfig":
         """Load from environment variables."""
-        max_workers = int(os.getenv("AZURE_MAX_WORKERS", "4"))
-        inner_analyze_workers = int(os.getenv("AZURE_INNER_ANALYZE_WORKERS", "1"))
-        upload_delay = float(os.getenv("AZURE_UPLOAD_DELAY", "0.5"))
-        embed_batch_size = int(os.getenv("AZURE_EMBED_BATCH_SIZE", "128"))
-        upload_batch_size = int(os.getenv("AZURE_UPLOAD_BATCH_SIZE", "1000"))
+        logger = get_logger(__name__)
 
-        # Parallelization settings
-        max_image_concurrency = int(os.getenv("AZURE_MAX_IMAGE_CONCURRENCY", "8"))
-        max_figure_concurrency = int(os.getenv("AZURE_MAX_FIGURE_CONCURRENCY", "5"))
-        max_batch_upload_concurrency = int(os.getenv("AZURE_MAX_BATCH_UPLOAD_CONCURRENCY", "5"))
+        # MAX_WORKERS (formerly AZURE_MAX_WORKERS)
+        max_workers_str = os.getenv("MAX_WORKERS") or os.getenv("AZURE_MAX_WORKERS", "4")
+        if os.getenv("AZURE_MAX_WORKERS") and not os.getenv("MAX_WORKERS"):
+            logger.warning(
+                "AZURE_MAX_WORKERS is deprecated. Use MAX_WORKERS instead. "
+                "Support for AZURE_MAX_WORKERS will be removed in v2.0."
+            )
+        max_workers = int(max_workers_str)
+
+        # INNER_ANALYZE_WORKERS (formerly AZURE_INNER_ANALYZE_WORKERS)
+        inner_workers_str = os.getenv("INNER_ANALYZE_WORKERS") or os.getenv("AZURE_INNER_ANALYZE_WORKERS", "1")
+        if os.getenv("AZURE_INNER_ANALYZE_WORKERS") and not os.getenv("INNER_ANALYZE_WORKERS"):
+            logger.warning(
+                "AZURE_INNER_ANALYZE_WORKERS is deprecated. Use INNER_ANALYZE_WORKERS instead. "
+                "Support for AZURE_INNER_ANALYZE_WORKERS will be removed in v2.0."
+            )
+        inner_analyze_workers = int(inner_workers_str)
+
+        # UPLOAD_DELAY (formerly AZURE_UPLOAD_DELAY)
+        upload_delay_str = os.getenv("UPLOAD_DELAY") or os.getenv("AZURE_UPLOAD_DELAY", "0.5")
+        if os.getenv("AZURE_UPLOAD_DELAY") and not os.getenv("UPLOAD_DELAY"):
+            logger.warning(
+                "AZURE_UPLOAD_DELAY is deprecated. Use UPLOAD_DELAY instead. "
+                "Support for AZURE_UPLOAD_DELAY will be removed in v2.0."
+            )
+        upload_delay = float(upload_delay_str)
+
+        # EMBEDDING_BATCH_SIZE (formerly AZURE_EMBED_BATCH_SIZE)
+        embed_batch_str = os.getenv("EMBEDDING_BATCH_SIZE") or os.getenv("AZURE_EMBED_BATCH_SIZE", "128")
+        if os.getenv("AZURE_EMBED_BATCH_SIZE") and not os.getenv("EMBEDDING_BATCH_SIZE"):
+            logger.warning(
+                "AZURE_EMBED_BATCH_SIZE is deprecated. Use EMBEDDING_BATCH_SIZE instead. "
+                "Support for AZURE_EMBED_BATCH_SIZE will be removed in v2.0."
+            )
+        embed_batch_size = int(embed_batch_str)
+
+        # UPLOAD_BATCH_SIZE (formerly AZURE_UPLOAD_BATCH_SIZE)
+        upload_batch_str = os.getenv("UPLOAD_BATCH_SIZE") or os.getenv("AZURE_UPLOAD_BATCH_SIZE", "1000")
+        if os.getenv("AZURE_UPLOAD_BATCH_SIZE") and not os.getenv("UPLOAD_BATCH_SIZE"):
+            logger.warning(
+                "AZURE_UPLOAD_BATCH_SIZE is deprecated. Use UPLOAD_BATCH_SIZE instead. "
+                "Support for AZURE_UPLOAD_BATCH_SIZE will be removed in v2.0."
+            )
+        upload_batch_size = int(upload_batch_str)
+
+        # MAX_IMAGE_CONCURRENCY (formerly AZURE_MAX_IMAGE_CONCURRENCY)
+        max_img_str = os.getenv("MAX_IMAGE_CONCURRENCY") or os.getenv("AZURE_MAX_IMAGE_CONCURRENCY", "8")
+        if os.getenv("AZURE_MAX_IMAGE_CONCURRENCY") and not os.getenv("MAX_IMAGE_CONCURRENCY"):
+            logger.warning(
+                "AZURE_MAX_IMAGE_CONCURRENCY is deprecated. Use MAX_IMAGE_CONCURRENCY instead. "
+                "Support for AZURE_MAX_IMAGE_CONCURRENCY will be removed in v2.0."
+            )
+        max_image_concurrency = int(max_img_str)
+
+        # MAX_FIGURE_CONCURRENCY (formerly AZURE_MAX_FIGURE_CONCURRENCY)
+        max_fig_str = os.getenv("MAX_FIGURE_CONCURRENCY") or os.getenv("AZURE_MAX_FIGURE_CONCURRENCY", "5")
+        if os.getenv("AZURE_MAX_FIGURE_CONCURRENCY") and not os.getenv("MAX_FIGURE_CONCURRENCY"):
+            logger.warning(
+                "AZURE_MAX_FIGURE_CONCURRENCY is deprecated. Use MAX_FIGURE_CONCURRENCY instead. "
+                "Support for AZURE_MAX_FIGURE_CONCURRENCY will be removed in v2.0."
+            )
+        max_figure_concurrency = int(max_fig_str)
+
+        # MAX_BATCH_UPLOAD_CONCURRENCY (formerly AZURE_MAX_BATCH_UPLOAD_CONCURRENCY)
+        max_batch_str = os.getenv("MAX_BATCH_UPLOAD_CONCURRENCY") or os.getenv("AZURE_MAX_BATCH_UPLOAD_CONCURRENCY", "5")
+        if os.getenv("AZURE_MAX_BATCH_UPLOAD_CONCURRENCY") and not os.getenv("MAX_BATCH_UPLOAD_CONCURRENCY"):
+            logger.warning(
+                "AZURE_MAX_BATCH_UPLOAD_CONCURRENCY is deprecated. Use MAX_BATCH_UPLOAD_CONCURRENCY instead. "
+                "Support for AZURE_MAX_BATCH_UPLOAD_CONCURRENCY will be removed in v2.0."
+            )
+        max_batch_upload_concurrency = int(max_batch_str)
 
         return cls(
             max_workers=max_workers,
@@ -1061,18 +1277,55 @@ class PipelineConfig:
         content_understanding = ContentUnderstandingConfig.from_env()
 
         # Processing options
-        media_describer_str = os.getenv("AZURE_MEDIA_DESCRIBER", "gpt4o").lower()
-        media_describer_mode = MediaDescriberMode(media_describer_str)
+        logger = get_logger(__name__)
 
-        table_render_str = os.getenv("AZURE_TABLE_RENDER", "plain").lower()
-        table_render_mode = TableRenderMode(table_render_str)
+        # MEDIA_DESCRIBER_MODE (formerly AZURE_MEDIA_DESCRIBER)
+        media_describer_str = os.getenv("MEDIA_DESCRIBER_MODE") or os.getenv("AZURE_MEDIA_DESCRIBER", "gpt4o")
+        if os.getenv("AZURE_MEDIA_DESCRIBER") and not os.getenv("MEDIA_DESCRIBER_MODE"):
+            logger.warning(
+                "AZURE_MEDIA_DESCRIBER is deprecated. Use MEDIA_DESCRIBER_MODE instead. "
+                "Support for AZURE_MEDIA_DESCRIBER will be removed in v2.0."
+            )
+        media_describer_mode = MediaDescriberMode(media_describer_str.lower())
 
-        generate_table_summaries = os.getenv("AZURE_TABLE_SUMMARIES", "false").lower() == "true"
+        # TABLE_RENDER_FORMAT (formerly AZURE_TABLE_RENDER)
+        table_render_str = os.getenv("TABLE_RENDER_FORMAT") or os.getenv("AZURE_TABLE_RENDER", "plain")
+        if os.getenv("AZURE_TABLE_RENDER") and not os.getenv("TABLE_RENDER_FORMAT"):
+            logger.warning(
+                "AZURE_TABLE_RENDER is deprecated. Use TABLE_RENDER_FORMAT instead. "
+                "Support for AZURE_TABLE_RENDER will be removed in v2.0."
+            )
+        table_render_mode = TableRenderMode(table_render_str.lower())
+
+        # TABLE_SUMMARIES_ENABLED (formerly AZURE_TABLE_SUMMARIES)
+        table_summaries_str = os.getenv("TABLE_SUMMARIES_ENABLED") or os.getenv("AZURE_TABLE_SUMMARIES", "false")
+        if os.getenv("AZURE_TABLE_SUMMARIES") and not os.getenv("TABLE_SUMMARIES_ENABLED"):
+            logger.warning(
+                "AZURE_TABLE_SUMMARIES is deprecated. Use TABLE_SUMMARIES_ENABLED instead. "
+                "Support for AZURE_TABLE_SUMMARIES will be removed in v2.0."
+            )
+        generate_table_summaries = table_summaries_str.lower() == "true"
+
+        # GENERATE_PAGE_PDFS (formerly AZURE_GENERATE_PAGE_PDFS) - not currently in the code, but adding for completeness
+        # This will be used when the feature is implemented
+        # generate_page_pdfs_str = os.getenv("GENERATE_PAGE_PDFS") or os.getenv("AZURE_GENERATE_PAGE_PDFS", "false")
+        # if os.getenv("AZURE_GENERATE_PAGE_PDFS") and not os.getenv("GENERATE_PAGE_PDFS"):
+        #     logger.warning(
+        #         "AZURE_GENERATE_PAGE_PDFS is deprecated. Use GENERATE_PAGE_PDFS instead. "
+        #         "Support for AZURE_GENERATE_PAGE_PDFS will be removed in v2.0."
+        #     )
+        # generate_page_pdfs = generate_page_pdfs_str.lower() == "true"
+
         use_integrated_vectorization = os.getenv("AZURE_USE_INTEGRATED_VECTORIZATION", "false").lower() == "true"
 
-        # Document action mode
-        document_action_str = os.getenv("AZURE_DOCUMENT_ACTION", "add").lower()
-        document_action = DocumentAction(document_action_str)
+        # DOCUMENT_ACTION (formerly AZURE_DOCUMENT_ACTION)
+        document_action_str = os.getenv("DOCUMENT_ACTION") or os.getenv("AZURE_DOCUMENT_ACTION", "add")
+        if os.getenv("AZURE_DOCUMENT_ACTION") and not os.getenv("DOCUMENT_ACTION"):
+            logger.warning(
+                "AZURE_DOCUMENT_ACTION is deprecated. Use DOCUMENT_ACTION instead. "
+                "Support for AZURE_DOCUMENT_ACTION will be removed in v2.0."
+            )
+        document_action = DocumentAction(document_action_str.lower())
 
         # Auto-detect vector store mode (backward compatible)
         vector_store_mode = None

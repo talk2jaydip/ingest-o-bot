@@ -367,14 +367,14 @@ class Pipeline:
                 logger.warning("To fix - Choose ONE option:")
                 logger.warning("")
                 logger.warning("  OPTION 1 (Recommended): Use blob input → blob artifacts")
-                logger.warning("    Set: AZURE_INPUT_MODE=blob")
-                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
+                logger.warning("    Set: INPUT_MODE=blob")
+                logger.warning("    Remove: ARTIFACTS_DIR (if set)")
                 logger.warning("    Result: Artifacts automatically go to blob storage")
                 logger.warning("")
                 logger.warning("  OPTION 2: Keep local input, override to blob artifacts")
-                logger.warning("    Keep: AZURE_INPUT_MODE=local")
-                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
-                logger.warning("    Add: AZURE_STORE_ARTIFACTS_TO_BLOB=true")
+                logger.warning("    Keep: INPUT_MODE=local")
+                logger.warning("    Remove: ARTIFACTS_DIR (if set)")
+                logger.warning("    Add: STORE_ARTIFACTS_TO_BLOB=true")
                 logger.warning("=" * 80)
                 logger.warning("")
         
@@ -578,13 +578,13 @@ class Pipeline:
         if len(files) == 0:
             logger.error("No files found in input source. Check your configuration:")
             if self.config.input.mode.value == "local":
-                logger.error(f"  - AZURE_INPUT_MODE=local")
-                logger.error(f"  - AZURE_LOCAL_GLOB={self.config.input.local_glob}")
+                logger.error(f"  - INPUT_MODE=local")
+                logger.error(f"  - LOCAL_INPUT_GLOB={self.config.input.local_glob}")
                 logger.error(f"  Ensure files exist matching the glob pattern")
             else:
-                logger.error(f"  - AZURE_INPUT_MODE=blob")
-                logger.error(f"  - AZURE_BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
-                logger.error(f"  - AZURE_BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
+                logger.error(f"  - INPUT_MODE=blob")
+                logger.error(f"  - BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
+                logger.error(f"  - BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
                 logger.error(f"  Ensure the container exists and contains files")
             raise ValueError("No files found to process")
 
@@ -964,12 +964,12 @@ class Pipeline:
         if files_found == 0:
             logger.error("No files found in input source to remove. Check your configuration:")
             if self.config.input.mode.value == "local":
-                logger.error(f"  - AZURE_INPUT_MODE=local")
-                logger.error(f"  - AZURE_LOCAL_GLOB={self.config.input.local_glob}")
+                logger.error(f"  - INPUT_MODE=local")
+                logger.error(f"  - LOCAL_INPUT_GLOB={self.config.input.local_glob}")
             else:
-                logger.error(f"  - AZURE_INPUT_MODE=blob")
-                logger.error(f"  - AZURE_BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
-                logger.error(f"  - AZURE_BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
+                logger.error(f"  - INPUT_MODE=blob")
+                logger.error(f"  - BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
+                logger.error(f"  - BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
             raise ValueError("No files found to remove")
 
         logger.info(f"Total removed: {total_removed} documents")

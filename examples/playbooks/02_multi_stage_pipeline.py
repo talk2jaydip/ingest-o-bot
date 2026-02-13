@@ -129,9 +129,9 @@ async def process_stage(stage: ProcessingStage, base_config: PipelineConfig) -> 
     os.environ.update({
         'LOCAL_INPUT_GLOB': stage.input_glob,
         'LOCAL_ARTIFACTS_DIR': f"./artifacts/{stage.artifacts_suffix}",
-        'CHUNKING_MAX_CHARS': str(stage.chunking_max_chars),
         'CHUNKING_MAX_TOKENS': str(stage.chunking_max_tokens),
         'CHUNKING_OVERLAP_PERCENT': str(stage.overlap_percent),
+        'CHUNKING_DISABLE_CHAR_LIMIT': 'true',
     })
 
     # Reload configuration with stage-specific settings
