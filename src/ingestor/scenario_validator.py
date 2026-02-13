@@ -44,12 +44,12 @@ class ScenarioValidator:
     SCENARIO_REQUIREMENTS = {
         Scenario.LOCAL_DEV: {
             "required": [
-                "AZURE_INPUT_MODE",  # Must be "local"
-                "AZURE_LOCAL_GLOB",
+                "INPUT_MODE",  # Must be "local"
+                "LOCAL_INPUT_GLOB",
             ],
             "optional": [
-                "AZURE_ARTIFACTS_DIR",
-                "AZURE_OFFICE_EXTRACTOR_MODE",
+                "ARTIFACTS_DIR",
+                "OFFICE_EXTRACTOR_MODE",
                 "LOG_LEVEL",
             ],
             "forbidden": [],  # No Azure services required
@@ -77,15 +77,15 @@ class ScenarioValidator:
             "required": [
                 "VECTOR_STORE_MODE",  # Must be "chromadb"
                 "EMBEDDINGS_MODE",  # Must be "huggingface"
-                "AZURE_INPUT_MODE",  # Must be "local"
-                "AZURE_LOCAL_GLOB",
+                "INPUT_MODE",  # Must be "local"
+                "LOCAL_INPUT_GLOB",
             ],
             "optional": [
                 "CHROMADB_PERSIST_DIR",
                 "CHROMADB_COLLECTION_NAME",
                 "HUGGINGFACE_MODEL_NAME",
                 "HUGGINGFACE_DEVICE",
-                "AZURE_OFFICE_EXTRACTOR_MODE",  # Should be "markitdown"
+                "OFFICE_EXTRACTOR_MODE",  # Should be "markitdown"
             ],
             "forbidden": [
                 "AZURE_SEARCH_SERVICE",
@@ -141,7 +141,7 @@ class ScenarioValidator:
         # Check explicit mode settings
         vector_mode = os.getenv("VECTOR_STORE_MODE", "").lower()
         embeddings_mode = os.getenv("EMBEDDINGS_MODE", "").lower()
-        input_mode = os.getenv("AZURE_INPUT_MODE", "local").lower()
+        input_mode = os.getenv("INPUT_MODE", "local").lower()
 
         # Offline scenario: ChromaDB + HuggingFace + local input
         if vector_mode == "chromadb" and embeddings_mode == "huggingface" and input_mode == "local":
@@ -472,21 +472,14 @@ Available scenarios:
     # Load specified .env file
     try:
         from dotenv import load_dotenv
-        env_file = Path(args.env_file)
-
-        # Try current directory first
-        if not env_file.exists():
-            # Try parent directory (in case running from src/)
-            parent_env = Path('..') / args.env_file
-            if parent_env.exists():
-                env_file = parent_env
+        env_file = Path(args.env_file).resolve()
 
         if env_file.exists():
             load_dotenv(dotenv_path=env_file, override=True)
-            print(f"✓ Loaded environment from: {env_file.resolve()}\n")
+            print(f"✓ Loaded environment from: {env_file}\n")
         else:
-            print(f"⚠️  Environment file not found: {args.env_file}")
-            print(f"⚠️  Tried: {env_file.resolve()}")
+            print(f"⚠️  Environment file not found: {env_file}")
+            print(f"⚠️  (Searched at: {env_file})")
             print(f"⚠️  Using system environment variables\n")
     except ImportError:
         print(f"⚠️  python-dotenv not installed, using system environment variables\n")

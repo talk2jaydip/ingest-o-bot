@@ -98,22 +98,22 @@ os.environ.update({
     # DOCUMENT PROCESSING: Offline Mode
     # ========================================================================
     # No Azure Document Intelligence - use MarkItDown instead
-    "AZURE_OFFICE_EXTRACTOR_MODE": "markitdown",
+    "EXTRACTION_MODE": "markitdown",
     # No media descriptions for faster processing
-    "AZURE_MEDIA_DESCRIBER": "disabled",
+    "MEDIA_DESCRIBER_MODE": "disabled",
 
     # ========================================================================
     # CHUNKING: Development Settings
     # ========================================================================
-    "CHUNKING_MAX_CHARS": "1500",  # Smaller for faster processing
     "CHUNKING_MAX_TOKENS": "400",
     "CHUNKING_OVERLAP_PERCENT": "10",
+    "CHUNKING_DISABLE_CHAR_LIMIT": "true",
     "CHUNKING_CROSS_PAGE_OVERLAP": "false",
 
     # ========================================================================
     # PERFORMANCE: Development Settings
     # ========================================================================
-    "AZURE_CHUNKING_MAX_WORKERS": "2",  # Lower for easier debugging
+    "MAX_WORKERS": "2",  # Lower for easier debugging
     "AZURE_CHUNKING_MAX_IMAGE_CONCURRENCY": "4",
     "AZURE_CHUNKING_MAX_BATCH_UPLOAD_CONCURRENCY": "2",
 

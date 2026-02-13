@@ -51,12 +51,15 @@ VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
 HUGGINGFACE_MODEL_NAME=jinaai/jina-embeddings-v2-base-en  # Default: 768 dims, 8192 tokens
+INPUT_MODE=local  # v2.0: renamed from AZURE_INPUT_MODE
+EXTRACTION_MODE=markitdown  # v2.0: renamed from AZURE_OFFICE_EXTRACTOR_MODE
 ```
 
 **Hybrid Cloud/Local (Azure Search + Hugging Face):**
 ```bash
 VECTOR_STORE_MODE=azure_search
 EMBEDDINGS_MODE=huggingface
+INPUT_MODE=local  # v2.0: renamed from AZURE_INPUT_MODE
 ```
 
 **Cloud Optimized (Azure Search + Cohere):**
@@ -84,18 +87,28 @@ Config: CHUNKING_MAX_TOKENS=500
 Result: Automatically reduced to 288 tokens (with 15% buffer + 10% overlap)
 ```
 
-Generic parameter names supported alongside Azure-prefixed ones:
+**v2.0 Variable Naming**: Generic parameter names (Azure-prefixed names deprecated):
 ```bash
-# Generic (recommended)
+# v2.0 Generic Names (recommended)
 CHUNKING_MAX_TOKENS=500
 CHUNKING_MAX_CHARS=2000
 CHUNKING_OVERLAP_PERCENT=10
+INPUT_MODE=local
+EXTRACTION_MODE=hybrid
+MAX_WORKERS=4
+EMBEDDING_BATCH_SIZE=128
 
-# Azure-prefixed (backward compatibility)
+# v1.x Azure-prefixed (deprecated, will be removed in v3.0)
 AZURE_CHUNKING_MAX_TOKENS=500
 AZURE_CHUNKING_MAX_CHARS=2000
 AZURE_CHUNKING_OVERLAP_PERCENT=10
+AZURE_INPUT_MODE=local
+AZURE_OFFICE_EXTRACTOR_MODE=hybrid
+AZURE_MAX_WORKERS=4
+AZURE_EMBED_BATCH_SIZE=128
 ```
+
+**Migration:** See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for upgrading from v1.x
 
 See [Embeddings Providers Guide](docs/embeddings_providers.md#dynamic-chunking-feature) for details.
 
