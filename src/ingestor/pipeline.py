@@ -354,27 +354,37 @@ class Pipeline:
             await self.artifact_storage.ensure_containers_exist()
 
             # IMPORTANT: Validate blob storage configuration
-            # storage_url and citation URLs REQUIRE blob storage
-            if not isinstance(self.artifact_storage, BlobArtifactStorage):
+            # storage_url and citation URLs REQUIRE blob storage ONLY for Azure AI Search
+            # Determine if we're using Azure Search
+            using_azure_search = (
+                self.config.vector_store_mode == VectorStoreMode.AZURE_SEARCH
+                if self.config.vector_store_mode
+                else True  # Legacy default
+            )
+
+            if using_azure_search and not isinstance(self.artifact_storage, BlobArtifactStorage):
                 logger.warning("=" * 80)
                 logger.warning("⚠️  LOCAL ARTIFACTS MODE - Azure AI Search requires blob storage")
                 logger.warning("=" * 80)
                 logger.warning("Why this matters:")
-                logger.warning("  • Azure AI Search requires https:// blob URLs")
+                logger.warning("  • Azure AI Search requires https:// blob URLs for citation links")
                 logger.warning("  • Local artifacts use file:// URIs that won't work in the index")
-                logger.warning("  • Users won't be able to access document citations")
+                logger.warning("  • Document citations will not be accessible to end users")
                 logger.warning("")
                 logger.warning("To fix - Choose ONE option:")
                 logger.warning("")
                 logger.warning("  OPTION 1 (Recommended): Use blob input → blob artifacts")
                 logger.warning("    Set: INPUT_MODE=blob")
-                logger.warning("    Remove: ARTIFACTS_DIR (if set)")
+                logger.warning("    Remove: LOCAL_ARTIFACTS_DIR (if set)")
                 logger.warning("    Result: Artifacts automatically go to blob storage")
                 logger.warning("")
-                logger.warning("  OPTION 2: Keep local input, override to blob artifacts")
+                logger.warning("  OPTION 2: Keep local input, force blob artifacts")
                 logger.warning("    Keep: INPUT_MODE=local")
-                logger.warning("    Remove: ARTIFACTS_DIR (if set)")
-                logger.warning("    Add: STORE_ARTIFACTS_TO_BLOB=true")
+                logger.warning("    Add: ARTIFACTS_MODE=blob")
+                logger.warning("    Configure blob storage variables (see CONFIGURATION.md)")
+                logger.warning("")
+                logger.warning("  OPTION 3: Accept limitation (citations won't work)")
+                logger.warning("    Keep current settings if you don't need citation links")
                 logger.warning("=" * 80)
                 logger.warning("")
         
@@ -535,6 +545,17 @@ class Pipeline:
             await self.validate()
             logger.info("✅ Validation complete. Exiting without processing documents.")
             return None
+
+        # Run auto-validation before processing if enabled
+        if self.config.auto_validate:
+            logger.info("🔍 Running auto-validation before processing...")
+            try:
+                await self.validate()
+                logger.info("✅ Auto-validation passed. Proceeding with document processing.")
+            except RuntimeError as e:
+                logger.error(f"❌ Auto-validation failed: {e}")
+                logger.error("Fix the errors above and retry. Set AUTO_VALIDATE=false to skip validation.")
+                raise
 
         logger.info(f"Starting document ingestion pipeline (action: {self.config.document_action.value})")
         await self._initialize_components()
