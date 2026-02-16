@@ -280,7 +280,7 @@ def get_document_chunks(doc_id: str, max_chunks: int = DEFAULT_MAX_SEARCH_RESULT
         max_chunks: Maximum number of chunks to retrieve (default: 1000)
 
     Returns:
-        List of chunks sorted by page number
+        List of chunks sorted by page number, formatted for UI display
     """
     client = get_search_client()
     if not client:
@@ -319,15 +319,42 @@ def get_document_chunks(doc_id: str, max_chunks: int = DEFAULT_MAX_SEARCH_RESULT
             # Get content
             content = result.get("content", "")
 
-            chunks.append({
-                "id": chunk_id,
-                "page": page_num,
+            # Get sourcefile for sourcepage field
+            sourcefile = None
+            for file_field in ["sourcefile", "source_file", "filename", "file_name"]:
+                if file_field in result:
+                    sourcefile = result.get(file_field, "")
+                    if sourcefile:
+                        break
+            if not sourcefile:
+                sourcefile = doc_id
+
+            # Get category
+            category = result.get("category", "") or result.get("type", "")
+
+            # Get token count
+            token_count = result.get("token_count", 0) or result.get("tokens", 0) or 0
+
+            # Format chunk to match expected UI structure
+            chunk = {
+                "chunk_id": chunk_id,
+                "page_num": page_num,
+                "sourcepage": sourcefile,
                 "content": content,
-                "metadata": {k: v for k, v in result.items() if k not in ["content", "id"]}
-            })
+                "token_count": token_count,
+                "category": category
+            }
+
+            # Add optional fields if present
+            optional_fields = ["content_type", "has_table", "has_image", "url", "title"]
+            for field in optional_fields:
+                if field in result and result.get(field):
+                    chunk[field] = result.get(field)
+
+            chunks.append(chunk)
 
         # Sort by page number
-        chunks.sort(key=lambda x: x["page"])
+        chunks.sort(key=lambda x: x["page_num"])
         return chunks
 
     except Exception as e:

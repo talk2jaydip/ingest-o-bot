@@ -3132,30 +3132,36 @@ def create_ui():
                             }
 
                         # Convert ChromaDB chunk format to expected format
-                        # Row format: [chunk_id, sourcefile, page_num, content, token_count]
+                        # Row format from get_collection_chunks: [chunk_id, sourcefile, page_num, content, token_count]
                         chunks = []
                         for row in chunks_data:
                             if len(row) < 4:
                                 logger.warning(f"Skipping malformed chunk row: {row}")
                                 continue
 
-                            # Safe type conversion for page_num
+                            # Extract and validate each field
+                            chunk_id = str(row[0]) if row[0] is not None else f"chunk_{len(chunks)}"
+                            sourcefile = str(row[1]) if row[1] is not None else "Unknown"
+
+                            # Safe type conversion for page_num (row[2])
                             try:
                                 page_num = int(row[2]) if row[2] is not None else 0
                             except (ValueError, TypeError):
                                 page_num = 0
 
-                            # Safe type conversion for token_count
+                            content = str(row[3]) if row[3] is not None else ""
+
+                            # Safe type conversion for token_count (row[4])
                             try:
                                 token_count = int(row[4]) if len(row) > 4 and row[4] is not None else 0
                             except (ValueError, TypeError):
                                 token_count = 0
 
                             chunks.append({
-                                "chunk_id": str(row[0]),
-                                "sourcepage": str(row[1]),
+                                "chunk_id": chunk_id,
+                                "sourcepage": sourcefile,  # FIXED: row[1] is sourcefile, not sourcepage identifier
                                 "page_num": page_num,
-                                "content": str(row[3]),
+                                "content": content,
                                 "token_count": token_count,
                                 "category": "chromadb"
                             })
@@ -3365,8 +3371,13 @@ def create_ui():
                     # For now, just show a message
                     return f"💾 Export functionality coming soon! Would export chunk {chunk_index + 1} from {filename}"
 
-                def refresh_chunks(parent_id):
-                    """Refresh chunks for current document with sidebar navigator."""
+                def refresh_chunks(parent_id, vector_store="azure"):
+                    """Refresh chunks for current document with sidebar navigator.
+
+                    Args:
+                        parent_id: Document ID or collection name
+                        vector_store: Either "azure" for Azure AI Search or "chromadb" for ChromaDB
+                    """
                     if not parent_id:
                         return {
                             current_chunks: [],
@@ -3374,7 +3385,44 @@ def create_ui():
                             connection_status: "No document selected"
                         }
 
-                    chunks = get_document_chunks(parent_id)
+                    # Get chunks based on vector store
+                    if vector_store == "chromadb":
+                        # For ChromaDB, parent_id is the collection name
+                        from ingestor.ui.helpers import get_collection_chunks
+                        chunks_data, status = get_collection_chunks(parent_id, limit=1000, include_full_content=True)
+
+                        # Convert ChromaDB format to expected format
+                        chunks = []
+                        for row in chunks_data:
+                            if len(row) < 4:
+                                continue
+
+                            chunk_id = str(row[0]) if row[0] is not None else f"chunk_{len(chunks)}"
+                            sourcefile = str(row[1]) if row[1] is not None else "Unknown"
+
+                            try:
+                                page_num = int(row[2]) if row[2] is not None else 0
+                            except (ValueError, TypeError):
+                                page_num = 0
+
+                            content = str(row[3]) if row[3] is not None else ""
+
+                            try:
+                                token_count = int(row[4]) if len(row) > 4 and row[4] is not None else 0
+                            except (ValueError, TypeError):
+                                token_count = 0
+
+                            chunks.append({
+                                "chunk_id": chunk_id,
+                                "sourcepage": sourcefile,
+                                "page_num": page_num,
+                                "content": content,
+                                "token_count": token_count,
+                                "category": "chromadb"
+                            })
+                    else:
+                        # Azure AI Search
+                        chunks = get_document_chunks(parent_id)
 
                     if not chunks:
                         return {
@@ -3670,7 +3718,7 @@ def create_ui():
                 # Refresh all chunks
                 refresh_chunks_btn.click(
                     fn=refresh_chunks,
-                    inputs=[selected_doc_id],
+                    inputs=[selected_doc_id, active_vector_store],
                     outputs=[
                         current_chunks,
                         current_chunk_index,
