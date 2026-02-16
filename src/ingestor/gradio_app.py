@@ -3132,16 +3132,36 @@ def create_ui():
                             }
 
                         # Convert ChromaDB chunk format to expected format
+                        # Row format: [chunk_id, sourcefile, page_num, content, token_count]
                         chunks = []
                         for row in chunks_data:
+                            if len(row) < 4:
+                                logger.warning(f"Skipping malformed chunk row: {row}")
+                                continue
+
+                            # Safe type conversion for page_num
+                            try:
+                                page_num = int(row[2]) if row[2] is not None else 0
+                            except (ValueError, TypeError):
+                                page_num = 0
+
+                            # Safe type conversion for token_count
+                            try:
+                                token_count = int(row[4]) if len(row) > 4 and row[4] is not None else 0
+                            except (ValueError, TypeError):
+                                token_count = 0
+
                             chunks.append({
-                                "chunk_id": row[0] if len(row) > 0 else "",
-                                "sourcepage": row[1] if len(row) > 1 else "",
-                                "page_num": row[1] if len(row) > 1 else "",
-                                "content": row[3] if len(row) > 3 else row[2] if len(row) > 2 else "",
+                                "chunk_id": str(row[0]),
+                                "sourcepage": str(row[1]),
+                                "page_num": page_num,
+                                "content": str(row[3]),
+                                "token_count": token_count,
                                 "category": "chromadb"
                             })
                         parent_id = collection_name
+                        # Create a doc dict for ChromaDB to match Azure Search behavior
+                        doc = {"category": "ChromaDB Collection", "id": collection_name}
                     else:
                         # Azure AI Search
                         # Search for this document to get parent_id
