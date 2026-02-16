@@ -2,7 +2,6 @@
 
 import os
 import gradio as gr
-from typing import Dict, Tuple
 from pathlib import Path
 
 from ..helpers import get_env_var_safe, mask_sensitive_value
@@ -94,11 +93,11 @@ ENV_GROUPS = {
 }
 
 
-def create_env_editor() -> Tuple:
+def create_env_editor() -> tuple:
     """Create environment variable editor UI components.
 
     Returns:
-        Tuple of UI components
+        Tuple of UI components for environment variable editing
     """
     with gr.Column():
         gr.Markdown("### ⚙️ Environment Variables")
@@ -166,9 +165,18 @@ def create_env_editor() -> Tuple:
             return f"❌ Error saving to .env: {str(e)}"
 
     def reload_from_env():
-        """Reload environment variables from .env file."""
+        """Reload environment variables from .env file.
+
+        Returns:
+            Dictionary mapping components to their new values
+        """
         try:
             from dotenv import load_dotenv
+
+            env_file = Path.cwd() / ".env"
+            if not env_file.exists():
+                return {status_text: "⚠️ No .env file found"}
+
             load_dotenv(override=True)
 
             # Return updated values for all textboxes
@@ -178,7 +186,7 @@ def create_env_editor() -> Tuple:
 
             return {
                 **{all_textboxes[k]: v for k, v in updates.items()},
-                status_text: "✅ Reloaded from .env file"
+                status_text: f"✅ Reloaded {len(updates)} variables from .env file"
             }
 
         except Exception as e:
