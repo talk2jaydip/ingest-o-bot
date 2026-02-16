@@ -24,6 +24,14 @@ try:
 except ImportError:
     AZURE_SEARCH_AVAILABLE = False
 
+# Try to import ChromaDB
+try:
+    import chromadb
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    chromadb = None  # Set to None so code doesn't crash
+
 # =============================================================================
 # Module Configuration
 # =============================================================================
@@ -557,7 +565,8 @@ def get_collection_chunks(
     collection_name: str,
     limit: int = DEFAULT_CHUNK_LIMIT,
     offset: int = 0,
-    filters: Optional[dict] = None
+    filters: Optional[dict] = None,
+    include_full_content: bool = False
 ) -> tuple[List[List], str]:
     """Get chunks from ChromaDB collection with optional filtering.
 
@@ -566,6 +575,7 @@ def get_collection_chunks(
         limit: Maximum number of chunks to retrieve (default: 100)
         offset: Number of chunks to skip (for pagination)
         filters: Optional metadata filters (e.g., {"sourcefile": "doc.pdf"})
+        include_full_content: If True, include full content instead of preview
 
     Returns:
         Tuple of (rows_for_dataframe, status_message)
@@ -611,14 +621,17 @@ def get_collection_chunks(
                 page_num = metadata.get('page_number', 0)
                 token_count = metadata.get('token_count', 0)
 
-                # Content preview
-                content_preview = (
-                    document[:DEFAULT_CONTENT_PREVIEW_LENGTH] + "..."
-                    if len(document) > DEFAULT_CONTENT_PREVIEW_LENGTH
-                    else document
-                )
+                # Content (full or preview based on parameter)
+                if include_full_content:
+                    content = document
+                else:
+                    content = (
+                        document[:DEFAULT_CONTENT_PREVIEW_LENGTH] + "..."
+                        if len(document) > DEFAULT_CONTENT_PREVIEW_LENGTH
+                        else document
+                    )
 
-                rows.append([chunk_id, sourcefile, page_num, content_preview, token_count])
+                rows.append([chunk_id, sourcefile, page_num, content, token_count])
 
         status = f"Found {len(rows)} chunks"
         return rows, status
