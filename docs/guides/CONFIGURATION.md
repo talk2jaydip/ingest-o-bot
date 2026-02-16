@@ -82,12 +82,16 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 # Embeddings
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
 AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
+AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536  # Custom dimensions for text-embedding-3-* models
 
-# Custom dimensions (text-embedding-3-* only)
-AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536
+# Vision (for media/image descriptions - requires MEDIA_DESCRIBER_MODE=gpt4o)
+AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_VISION_MODEL=gpt-4o-mini
+AZURE_OPENAI_VISION_DETAIL=low  # Options: low, high, auto
 
-# Chat (for figure descriptions)
-AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o-mini
+# Chat (for table summaries - requires TABLE_SUMMARIES_ENABLED=true)
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_MODEL_NAME=gpt-4o
 
 # Performance
 AZURE_OPENAI_MAX_CONCURRENCY=5

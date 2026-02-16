@@ -415,7 +415,7 @@ AZURE_CHUNKING_MAX_TOKENS=500
 AZURE_CHUNKING_OVERLAP_PERCENT=10
 
 # Media description
-AZURE_MEDIA_DESCRIBER=gpt4o  # or content_understanding, disabled
+MEDIA_DESCRIBER_MODE=gpt4o  # or content_understanding, disabled
 ```
 
 ---
@@ -576,7 +576,7 @@ CHUNKING_OVERLAP_PERCENT=10
 
 # Processing
 AZURE_OFFICE_EXTRACTOR_MODE=azure_di
-AZURE_MEDIA_DESCRIBER=disabled
+MEDIA_DESCRIBER_MODE=disabled
 ```
 
 ### Cost Estimate
