@@ -600,9 +600,9 @@ python -m ingestor.cli --env-file envs/.env.scenario-multilingual.example
 
 - **[Configuration Guide](CONFIGURATION_FLAGS_GUIDE.md)** - All configuration parameters
 - **[Environment Variables Reference](../docs/reference/12_ENVIRONMENT_VARIABLES.md)** - Complete variable reference
-- **[Vector Stores Guide](../docs/vector_stores.md)** - Vector store details
-- **[Embeddings Providers Guide](../docs/embeddings_providers.md)** - Embedding provider details
-- **[Configuration Examples](../docs/configuration_examples.md)** - More examples
+- **[Vector Stores Guide](../docs/guides/VECTOR_STORES_GUIDE.md)** - Vector store details
+- **[Embeddings Providers Guide](../docs/guides/EMBEDDINGS_PROVIDERS_GUIDE.md)** - Embedding provider details
+- **[Configuration Examples](../docs/guides/CONFIGURATION_EXAMPLES.md)** - More examples
 
 ---
 
