@@ -94,23 +94,27 @@ AZURE_SEARCH_INDEX=your-index-name
 
 ## Azure OpenAI
 
-**Purpose:** Configure Azure OpenAI for embeddings and chat (figure descriptions)
+**Purpose:** Configure Azure OpenAI for embeddings, vision (media description), and chat (table summaries)
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `AZURE_OPENAI_ENDPOINT` | **Yes** | - | Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_KEY` | **Yes** | - | Azure OpenAI API key |
-| `AZURE_OPENAI_API_KEY` | **Yes** | - | Alternative name for API key |
+| `AZURE_OPENAI_API_KEY` | No | - | Alternative name for API key (alias) |
 | `AZURE_OPENAI_API_VERSION` | No | `2024-12-01-preview` | API version |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | **Yes** | - | Embedding deployment name |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | **Yes*** | - | Embedding deployment name |
 | `AZURE_OPENAI_EMBEDDING_MODEL` | No | `text-embedding-ada-002` | Embedding model name |
-| `AZURE_OPENAI_EMBEDDING_NAME` | No | `text-embedding-ada-002` | Alternative name for embedding model |
 | `AZURE_OPENAI_EMBEDDING_DIMENSIONS` | No | Model default | Custom dimensions for text-embedding-3-* models |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT` | No | - | Chat deployment name (for figure descriptions) |
+| `AZURE_OPENAI_VISION_DEPLOYMENT` | No | - | Vision model deployment (for media description with MEDIA_DESCRIBER_MODE=gpt4o) |
+| `AZURE_OPENAI_VISION_MODEL` | No | - | Vision model name (e.g., gpt-4o, gpt-4o-mini) |
+| `AZURE_OPENAI_VISION_DETAIL` | No | `auto` | Vision detail level: `low`, `high`, `auto` |
+| `AZURE_OPENAI_VISION_MAX_CONCURRENCY` | No | `10` | Maximum concurrent vision API requests |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT` | No | - | Chat deployment (for table summaries with TABLE_SUMMARIES_ENABLED=true) |
 | `AZURE_OPENAI_MODEL_NAME` | No | - | Chat model name |
-| `AZURE_OPENAI_MODEL` | No | - | Alternative name for chat model |
-| `AZURE_OPENAI_MAX_CONCURRENCY` | No | `5` | Maximum concurrent OpenAI requests |
+| `AZURE_OPENAI_MAX_CONCURRENCY` | No | `5` | Maximum concurrent OpenAI requests (embeddings/chat) |
 | `AZURE_OPENAI_MAX_RETRIES` | No | `3` | Maximum retry attempts for API calls |
+
+*Required when EMBEDDINGS_MODE=azure_openai
 
 **Embedding Dimensions:**
 - `text-embedding-ada-002`: Fixed 1536 (no custom dimensions)
@@ -121,8 +125,22 @@ AZURE_SEARCH_INDEX=your-index-name
 ```bash
 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
 AZURE_OPENAI_KEY=your-openai-key
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+
+# For embeddings
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
-AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
+
+# For media description (optional)
+AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_VISION_MODEL=gpt-4o-mini
+AZURE_OPENAI_VISION_DETAIL=low
+
+# For table summaries (optional)
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_MODEL_NAME=gpt-4o
+
+# Concurrency
 AZURE_OPENAI_MAX_CONCURRENCY=5
 AZURE_OPENAI_MAX_RETRIES=3
 ```
@@ -278,24 +296,37 @@ DOCUMENT_ACTION=removeall
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MEDIA_DESCRIBER_MODE` | No | `gpt4o` | Figure describer: `gpt4o`, `content_understanding`, or `disabled` |
-| `TABLE_RENDER_FORMAT` | No | `plain` | Table format: `plain` (text grid), `html` (frontend display), or `markdown` (markdown tables) |
-| `TABLE_SUMMARIES_ENABLED` | No | `false` | Generate LLM summaries for tables |
+| `MEDIA_DESCRIBER_MODE` | No | `disabled` | Image/media describer: `gpt4o`, `content_understanding`, or `disabled` |
+| `TABLE_RENDER_FORMAT` | No | `markdown` | Table format: `plain`, `html`, or `markdown` (recommended) |
+| `TABLE_SUMMARIES_ENABLED` | No | `false` | Generate LLM summaries for tables (requires AZURE_OPENAI_CHAT_DEPLOYMENT) |
 | `GENERATE_PAGE_PDFS` | No | `false` | Generate per-page PDFs for citations |
-| `AZURE_USE_INTEGRATED_VECTORIZATION` | No | `false` | Use Azure Search integrated vectorization (skip client-side embeddings) |
+| `AZURE_USE_INTEGRATED_VECTORIZATION` | No | `false` | Use Azure Search integrated vectorization (server-side embeddings) |
 
-**Deprecated Names (still supported, will be removed in v2.0):**
-- `AZURE_MEDIA_DESCRIBER` → use `MEDIA_DESCRIBER_MODE`
-- `AZURE_TABLE_RENDER` → use `TABLE_RENDER_FORMAT` (default changed from `html` to `plain`)
-- `AZURE_TABLE_SUMMARIES` → use `TABLE_SUMMARIES_ENABLED`
-- `AZURE_GENERATE_PAGE_PDFS` → use `GENERATE_PAGE_PDFS`
+**Media Describer Modes:**
+- `gpt4o`: Use Azure OpenAI GPT-4o Vision (requires AZURE_OPENAI_VISION_DEPLOYMENT)
+- `content_understanding`: Use Azure AI Vision Content Understanding API
+- `disabled`: Skip media description (zero cost, default)
+
+**Table Render Formats:**
+- `markdown`: Markdown table format (recommended for readability)
+- `html`: HTML table format (for web display)
+- `plain`: Plain text representation (legacy)
 
 **Example:**
 ```bash
-MEDIA_DESCRIBER_MODE=gpt4o
-TABLE_RENDER_FORMAT=plain  # Options: plain, html, markdown
+# Media description (requires AZURE_OPENAI_VISION_DEPLOYMENT if enabled)
+MEDIA_DESCRIBER_MODE=disabled  # Options: disabled, gpt4o, content_understanding
+
+# Table rendering
+TABLE_RENDER_FORMAT=markdown  # Options: markdown, html, plain
+
+# Table summaries (requires AZURE_OPENAI_CHAT_DEPLOYMENT if enabled)
 TABLE_SUMMARIES_ENABLED=false
+
+# Page PDFs
 GENERATE_PAGE_PDFS=false
+
+# Integrated vectorization (Azure Search only)
 AZURE_USE_INTEGRATED_VECTORIZATION=false
 ```
 
@@ -385,19 +416,19 @@ MAX_BATCH_UPLOAD_CONCURRENCY=5
 | `AZURE_CONTENT_UNDERSTANDING_ENDPOINT` | No | - | Content Understanding endpoint URL |
 | `AZURE_CONTENT_UNDERSTANDING_TENANT_ID` | No | - | Content Understanding tenant ID |
 
-**Usage:** Set `AZURE_MEDIA_DESCRIBER=content_understanding` to use this service.
+**Usage:** Set `MEDIA_DESCRIBER_MODE=content_understanding` to use this service.
 
 ---
 
 ## Complete Example Configuration
 
 ```bash
-# Azure Service Principal
+# Azure Service Principal (optional)
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CLIENT_SECRET=your-client-secret
 
-# Key Vault
+# Key Vault (optional)
 KEY_VAULT_URI=https://your-keyvault.vault.azure.net/
 
 # Document Intelligence
@@ -410,33 +441,51 @@ AZURE_SEARCH_SERVICE=your-search-service
 AZURE_SEARCH_KEY=your-search-key
 AZURE_SEARCH_INDEX=your-index-name
 
-# Azure OpenAI
+# Azure OpenAI - Embeddings
 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
 AZURE_OPENAI_KEY=your-openai-key
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
-AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
+AZURE_OPENAI_MAX_CONCURRENCY=5
+AZURE_OPENAI_MAX_RETRIES=3
 
-# Input (Local Mode) - NEW NAMES
+# Azure OpenAI - Vision (optional, for media description)
+AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_VISION_MODEL=gpt-4o-mini
+AZURE_OPENAI_VISION_DETAIL=low
+
+# Azure OpenAI - Chat (optional, for table summaries)
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_MODEL_NAME=gpt-4o
+
+# Input (Local Mode)
 INPUT_MODE=local
 LOCAL_INPUT_GLOB=./data/*.pdf
 
-# Artifacts (Local Mode) - NEW NAMES
+# Artifacts (Local Mode)
 ARTIFACTS_MODE=local
 LOCAL_ARTIFACTS_DIR=./artifacts
 
-# Processing Options - NEW NAMES
-MEDIA_DESCRIBER_MODE=gpt4o
-TABLE_RENDER_FORMAT=plain  # Options: plain, html, markdown
+# Processing Options
+MEDIA_DESCRIBER_MODE=disabled  # Options: disabled, gpt4o, content_understanding
+TABLE_RENDER_FORMAT=markdown   # Options: markdown, html, plain
+TABLE_SUMMARIES_ENABLED=false
+GENERATE_PAGE_PDFS=false
 DOCUMENT_ACTION=add
 
-# Chunking - NEW NAMES
-CHUNKING_MAX_TOKENS=500
+# Chunking
+CHUNKING_MAX_TOKENS=750
 CHUNKING_MAX_CHARS=1000
-CHUNKING_OVERLAP_PERCENT=10
+CHUNKING_OVERLAP_PERCENT=20
+CHUNKING_CROSS_PAGE_OVERLAP=true
+CHUNKING_DISABLE_CHAR_LIMIT=true
 
-# Performance - NEW NAMES
+# Performance
 MAX_WORKERS=4
-AZURE_OPENAI_MAX_CONCURRENCY=5
+EMBEDDING_BATCH_SIZE=128
+UPLOAD_BATCH_SIZE=1000
+MAX_IMAGE_CONCURRENCY=8
 ```
 
 ---
@@ -446,19 +495,22 @@ AZURE_OPENAI_MAX_CONCURRENCY=5
 ### Common Issues
 
 **❌ Error: `AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_SERVICE is required`**
-- **Fix:** Set `AZURE_SEARCH_SERVICE` or `AZURE_SEARCH_ENDPOINT`
+- **Fix:** Set `AZURE_SEARCH_SERVICE` or `AZURE_SEARCH_ENDPOINT` when using Azure AI Search
 
 **❌ Error: `AZURE_DOC_INT_ENDPOINT is required`**
-- **Fix:** Set `AZURE_DOC_INT_ENDPOINT`
+- **Fix:** Set `AZURE_DOC_INT_ENDPOINT` when using Azure Document Intelligence extraction
 
 **❌ Error: `AZURE_OPENAI_ENDPOINT is required`**
-- **Fix:** Set `AZURE_OPENAI_ENDPOINT`
+- **Fix:** Set `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY` when using Azure OpenAI embeddings
 
-**❌ Error: `AZURE_LOCAL_GLOB is required when AZURE_INPUT_MODE=local`**
-- **Fix:** Set `AZURE_LOCAL_GLOB` (e.g., `./data/*.pdf`)
+**❌ Error: `LOCAL_INPUT_GLOB is required when INPUT_MODE=local`**
+- **Fix:** Set `LOCAL_INPUT_GLOB` (e.g., `./data/*.pdf`) when INPUT_MODE=local
+
+**❌ Error: `Vision deployment not configured`**
+- **Fix:** Set `AZURE_OPENAI_VISION_DEPLOYMENT` when MEDIA_DESCRIBER_MODE=gpt4o, or set MEDIA_DESCRIBER_MODE=disabled
 
 **❌ Error: Rate limit exceeded**
-- **Fix:** Reduce `AZURE_DI_MAX_CONCURRENCY` and `AZURE_OPENAI_MAX_CONCURRENCY`
+- **Fix:** Reduce `AZURE_DI_MAX_CONCURRENCY`, `AZURE_OPENAI_MAX_CONCURRENCY`, and batch sizes
 
 ---
 
