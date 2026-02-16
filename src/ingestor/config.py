@@ -795,7 +795,7 @@ class ArtifactsConfig:
     local_dir: str = "./artifacts"
     # Blob mode
     blob_account_url: Optional[str] = None
-    blob_container_prefix: Optional[str] = None  # Prefix for all blob container names
+    blob_container_prefix: Optional[str] = None  # Base name from AZURE_STORAGE_CONTAINER (used as prefix for container names)
     blob_container_pages: Optional[str] = None
     blob_container_chunks: Optional[str] = None
     blob_container_images: Optional[str] = None
@@ -810,78 +810,68 @@ class ArtifactsConfig:
         Args:
             input_mode: Optional input mode to auto-detect artifacts mode from.
 
-        SIMPLIFIED Logic:
-        1. If LOCAL_ARTIFACTS_DIR is set → LOCAL storage at that directory
-           (Overrides input_mode - useful for debugging blob inputs locally)
-        2. Otherwise → Follow input_mode (local input → local artifacts, blob input → blob artifacts)
-        3. Default → LOCAL if no input_mode provided
+        STANDARD Logic:
+        1. Determine mode (priority order):
+           a. ARTIFACTS_MODE (explicit mode setting) - HIGHEST PRIORITY
+           b. STORE_ARTIFACTS_TO_BLOB (legacy override flag)
+           c. Follow input_mode (local input → local artifacts, blob input → blob artifacts)
+           d. Default → LOCAL if no input_mode provided
+        2. Configure storage based on mode:
+           - LOCAL mode: Use LOCAL_ARTIFACTS_DIR (or default ./artifacts)
+           - BLOB mode: Use blob storage configuration
 
         Deprecated flags (backwards compatibility):
         - AZURE_ARTIFACTS_DIR: Still supported (renamed to LOCAL_ARTIFACTS_DIR)
         - AZURE_ARTIFACTS_MODE: Still supported (renamed to ARTIFACTS_MODE)
-        - AZURE_STORE_ARTIFACTS_TO_BLOB: Still supported but redundant with input_mode
+        - AZURE_STORE_ARTIFACTS_TO_BLOB: Still supported but redundant with ARTIFACTS_MODE
         """
         logger = get_logger(__name__)
 
-        # LOCAL_ARTIFACTS_DIR (formerly AZURE_ARTIFACTS_DIR) - HIGHEST PRIORITY - OVERRIDE
-        artifacts_dir = os.getenv("LOCAL_ARTIFACTS_DIR") or os.getenv("AZURE_ARTIFACTS_DIR")
-        if os.getenv("AZURE_ARTIFACTS_DIR") and not os.getenv("LOCAL_ARTIFACTS_DIR"):
+        # STEP 1: Determine the mode (ARTIFACTS_MODE has highest priority)
+        # ARTIFACTS_MODE (formerly AZURE_ARTIFACTS_MODE)
+        mode_str = os.getenv("ARTIFACTS_MODE") or os.getenv("AZURE_ARTIFACTS_MODE")
+        if os.getenv("AZURE_ARTIFACTS_MODE") and not os.getenv("ARTIFACTS_MODE"):
             logger.warning(
-                "AZURE_ARTIFACTS_DIR is deprecated. Use LOCAL_ARTIFACTS_DIR instead. "
-                "Support for AZURE_ARTIFACTS_DIR will be removed in v2.0."
+                "AZURE_ARTIFACTS_MODE is deprecated. Use ARTIFACTS_MODE instead. "
+                "Support for AZURE_ARTIFACTS_MODE will be removed in v2.0."
             )
 
-        if artifacts_dir:
-            # Artifacts directory explicitly set - use local storage
-            mode = ArtifactsMode.LOCAL
-            logger.info(
-                f"Using local artifacts storage: {artifacts_dir} "
-                f"(overrides input_mode={input_mode.value if input_mode else 'not set'})"
+        # STORE_ARTIFACTS_TO_BLOB (formerly AZURE_STORE_ARTIFACTS_TO_BLOB)
+        force_blob_str = os.getenv("STORE_ARTIFACTS_TO_BLOB") or os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "")
+        if os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB") and not os.getenv("STORE_ARTIFACTS_TO_BLOB"):
+            logger.warning(
+                "AZURE_STORE_ARTIFACTS_TO_BLOB is deprecated. Use STORE_ARTIFACTS_TO_BLOB instead. "
+                "Support for AZURE_STORE_ARTIFACTS_TO_BLOB will be removed in v2.0."
             )
+        force_blob = force_blob_str.lower() == "true"
+
+        if mode_str:
+            # Explicit mode set - HIGHEST PRIORITY
+            mode = ArtifactsMode(mode_str.lower())
+            logger.info(f"Using ARTIFACTS_MODE={mode.value} (explicit mode setting)")
+        elif force_blob:
+            # Override flag set (deprecated but supported)
+            mode = ArtifactsMode.BLOB
+            logger.info("Using STORE_ARTIFACTS_TO_BLOB=true (deprecated, prefer ARTIFACTS_MODE=blob)")
+        elif input_mode:
+            # Follow input mode (RECOMMENDED approach)
+            mode = ArtifactsMode.BLOB if input_mode == InputMode.BLOB else ArtifactsMode.LOCAL
+            logger.info(f"Artifacts storage follows input mode: {mode.value}")
         else:
-            # Check deprecated flags for backwards compatibility
-            # ARTIFACTS_MODE (formerly AZURE_ARTIFACTS_MODE)
-            mode_str = os.getenv("ARTIFACTS_MODE") or os.getenv("AZURE_ARTIFACTS_MODE")
-            if os.getenv("AZURE_ARTIFACTS_MODE") and not os.getenv("ARTIFACTS_MODE"):
-                logger.warning(
-                    "AZURE_ARTIFACTS_MODE is deprecated. Use ARTIFACTS_MODE instead. "
-                    "Support for AZURE_ARTIFACTS_MODE will be removed in v2.0."
-                )
+            # Default to local
+            mode = ArtifactsMode.LOCAL
+            logger.info("Using default: local artifacts storage")
 
-            # STORE_ARTIFACTS_TO_BLOB (formerly AZURE_STORE_ARTIFACTS_TO_BLOB)
-            force_blob_str = os.getenv("STORE_ARTIFACTS_TO_BLOB") or os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "")
-            if os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB") and not os.getenv("STORE_ARTIFACTS_TO_BLOB"):
-                logger.warning(
-                    "AZURE_STORE_ARTIFACTS_TO_BLOB is deprecated. Use STORE_ARTIFACTS_TO_BLOB instead. "
-                    "Support for AZURE_STORE_ARTIFACTS_TO_BLOB will be removed in v2.0."
-                )
-            force_blob = force_blob_str.lower() == "true"
-
-            if mode_str:
-                # Explicit mode set (deprecated but supported)
-                mode = ArtifactsMode(mode_str.lower())
-                logger.info(f"Using ARTIFACTS_MODE={mode.value} (deprecated, prefer removing this flag)")
-            elif force_blob:
-                # Override flag set (deprecated but supported)
-                mode = ArtifactsMode.BLOB
-                logger.info("Using STORE_ARTIFACTS_TO_BLOB=true (deprecated, prefer removing this flag)")
-            elif input_mode:
-                # Follow input mode (RECOMMENDED approach)
-                mode = ArtifactsMode.BLOB if input_mode == InputMode.BLOB else ArtifactsMode.LOCAL
-                logger.info(f"Artifacts storage follows input mode: {mode.value}")
-            else:
-                # Default to local
-                mode = ArtifactsMode.LOCAL
-                logger.info("Using default: local artifacts storage")
-
+        # STEP 2: Configure storage based on determined mode
         if mode == ArtifactsMode.LOCAL:
-            # LOCAL_ARTIFACTS_DIR (formerly AZURE_ARTIFACTS_DIR)
+            # LOCAL_ARTIFACTS_DIR (formerly AZURE_ARTIFACTS_DIR) - only used in LOCAL mode
             local_dir = os.getenv("LOCAL_ARTIFACTS_DIR") or os.getenv("AZURE_ARTIFACTS_DIR", "./artifacts")
             if os.getenv("AZURE_ARTIFACTS_DIR") and not os.getenv("LOCAL_ARTIFACTS_DIR"):
                 logger.warning(
                     "AZURE_ARTIFACTS_DIR is deprecated. Use LOCAL_ARTIFACTS_DIR instead. "
                     "Support for AZURE_ARTIFACTS_DIR will be removed in v2.0."
                 )
+            logger.info(f"Local artifacts directory: {local_dir}")
             return cls(mode=mode, local_dir=local_dir)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -890,12 +880,16 @@ class ArtifactsConfig:
             else:
                 blob_account_url = os.getenv("AZURE_BLOB_ACCOUNT_URL")
 
-            # BLOB_CONTAINER_PREFIX (formerly AZURE_BLOB_CONTAINER_PREFIX)
-            blob_container_prefix = os.getenv("BLOB_CONTAINER_PREFIX") or os.getenv("AZURE_BLOB_CONTAINER_PREFIX", "")
-            if os.getenv("AZURE_BLOB_CONTAINER_PREFIX") and not os.getenv("BLOB_CONTAINER_PREFIX"):
+            # Container prefix for naming all blob containers
+            # Primary: AZURE_BLOB_CONTAINER_PREFIX (recommended)
+            # Fallback: BLOB_CONTAINER_PREFIX (deprecated alias)
+            blob_container_prefix = os.getenv("AZURE_BLOB_CONTAINER_PREFIX") or os.getenv("BLOB_CONTAINER_PREFIX", "")
+
+            # Show deprecation warning for alias
+            if os.getenv("BLOB_CONTAINER_PREFIX") and not os.getenv("AZURE_BLOB_CONTAINER_PREFIX"):
                 logger.warning(
-                    "AZURE_BLOB_CONTAINER_PREFIX is deprecated. Use BLOB_CONTAINER_PREFIX instead. "
-                    "Support for AZURE_BLOB_CONTAINER_PREFIX will be removed in v2.0."
+                    "BLOB_CONTAINER_PREFIX is deprecated. Use AZURE_BLOB_CONTAINER_PREFIX instead. "
+                    "Support for BLOB_CONTAINER_PREFIX will be removed in v2.0."
                 )
 
             # Base container names (will be prefixed if BLOB_CONTAINER_PREFIX is set)
@@ -904,16 +898,21 @@ class ArtifactsConfig:
             base_images = os.getenv("AZURE_BLOB_CONTAINER_OUT_IMAGES")
             base_citations = os.getenv("AZURE_BLOB_CONTAINER_CITATIONS")
 
-            # Fallback to AZURE_STORAGE_CONTAINER with -output suffix if specific containers not set
+            # Determine base container names with fallback logic
             if not base_pages and not base_chunks:
-                base_container = os.getenv("AZURE_STORAGE_CONTAINER")
-                if base_container:
+                # No explicit container names set - use prefix with default base names
+                if blob_container_prefix:
+                    # Use prefix with default base names (pages, chunks, images, citations)
                     base_pages = "pages"
                     base_chunks = "chunks"
                     base_images = "images"
                     base_citations = "citations"
-                    blob_container_prefix = base_container  # Use AZURE_STORAGE_CONTAINER as prefix
-                    get_logger(__name__).info(f"Using AZURE_STORAGE_CONTAINER as prefix for output containers: {base_container}")
+
+                    # Log which variable was used
+                    if os.getenv("AZURE_BLOB_CONTAINER_PREFIX"):
+                        logger.info(f"Using AZURE_BLOB_CONTAINER_PREFIX: {blob_container_prefix}")
+                    else:
+                        logger.info(f"Using BLOB_CONTAINER_PREFIX (deprecated): {blob_container_prefix}")
 
             # Apply prefix if configured
             if blob_container_prefix:
@@ -930,12 +929,44 @@ class ArtifactsConfig:
             blob_key = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
             blob_connection_string = os.getenv("AZURE_CONNECTION_STRING")
 
+            # Validation
             if not blob_account_url and not blob_connection_string:
-                raise ValueError("AZURE_STORAGE_ACCOUNT is required when AZURE_ARTIFACTS_MODE=blob")
+                raise ValueError(
+                    "Azure Storage Account configuration is required when ARTIFACTS_MODE=blob\n"
+                    "  Missing: AZURE_STORAGE_ACCOUNT or AZURE_CONNECTION_STRING\n"
+                    "  Set in your .env file:\n"
+                    "    AZURE_STORAGE_ACCOUNT=your-storage-account\n"
+                    "    AZURE_STORAGE_ACCOUNT_KEY=your-key"
+                )
             if not blob_container_pages:
-                raise ValueError("AZURE_BLOB_CONTAINER_OUT_PAGES or AZURE_STORAGE_CONTAINER is required when AZURE_ARTIFACTS_MODE=blob")
+                raise ValueError(
+                    "Blob container configuration is incomplete when ARTIFACTS_MODE=blob\n"
+                    "  \n"
+                    "  You must configure container naming. Choose one approach:\n"
+                    "  \n"
+                    "  APPROACH 1 - Prefix (Recommended):\n"
+                    "    AZURE_BLOB_CONTAINER_PREFIX=myproject\n"
+                    "    → Auto-creates: myproject-pages, myproject-chunks, myproject-images, myproject-citations\n"
+                    "  \n"
+                    "  APPROACH 2 - Explicit (Advanced):\n"
+                    "    AZURE_BLOB_CONTAINER_OUT_PAGES=pages\n"
+                    "    AZURE_BLOB_CONTAINER_OUT_CHUNKS=chunks\n"
+                    "    AZURE_BLOB_CONTAINER_OUT_IMAGES=images\n"
+                    "    AZURE_BLOB_CONTAINER_CITATIONS=citations\n"
+                    "  \n"
+                    "  Example .env configuration:\n"
+                    "    AZURE_STORAGE_ACCOUNT=mystorageaccount\n"
+                    "    AZURE_BLOB_CONTAINER_PREFIX=myproject"
+                )
             if not blob_container_chunks:
-                raise ValueError("AZURE_BLOB_CONTAINER_OUT_CHUNKS or AZURE_STORAGE_CONTAINER is required when AZURE_ARTIFACTS_MODE=blob")
+                raise ValueError(
+                    "Blob container configuration is incomplete when ARTIFACTS_MODE=blob\n"
+                    "  Missing chunks container. Use one of these approaches:\n"
+                    "  \n"
+                    "    AZURE_BLOB_CONTAINER_PREFIX=myproject  (Recommended)\n"
+                    "    OR\n"
+                    "    AZURE_BLOB_CONTAINER_OUT_CHUNKS=chunks  (Explicit)"
+                )
             
             return cls(
                 mode=mode,
@@ -1193,6 +1224,7 @@ class PipelineConfig:
     generate_table_summaries: bool = False
     use_integrated_vectorization: bool = False  # If True, skip client-side embeddings and let Azure Search generate them
     document_action: DocumentAction = DocumentAction.ADD  # Document processing action mode
+    auto_validate: bool = True  # Run validation before processing (default: true for safety)
 
     # New pluggable architecture fields (optional for backward compatibility)
     vector_store_mode: Optional[VectorStoreMode] = None  # Auto-detected from environment or legacy config
@@ -1327,6 +1359,9 @@ class PipelineConfig:
             )
         document_action = DocumentAction(document_action_str.lower())
 
+        # AUTO_VALIDATE: Run validation before processing
+        auto_validate = os.getenv("AUTO_VALIDATE", "true").lower() == "true"
+
         # Auto-detect vector store mode (backward compatible)
         vector_store_mode = None
         vector_store_config = None
@@ -1396,6 +1431,7 @@ class PipelineConfig:
             generate_table_summaries=generate_table_summaries,
             use_integrated_vectorization=use_integrated_vectorization,
             document_action=document_action,
+            auto_validate=auto_validate,
             vector_store_mode=vector_store_mode,
             vector_store_config=vector_store_config,
             embeddings_mode=embeddings_mode,
