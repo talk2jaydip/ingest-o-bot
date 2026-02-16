@@ -3109,8 +3109,8 @@ def create_ui():
                         collection_name = filename
                         from ingestor.ui.helpers import get_collection_chunks
 
-                        # Get chunks from collection
-                        chunks_data, status = get_collection_chunks(collection_name, limit=1000)
+                        # Get chunks from collection with full content for viewing
+                        chunks_data, status = get_collection_chunks(collection_name, limit=1000, include_full_content=True)
 
                         if not chunks_data:
                             return {
