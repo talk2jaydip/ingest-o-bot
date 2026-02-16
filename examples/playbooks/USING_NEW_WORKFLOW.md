@@ -101,8 +101,8 @@ notepad ../../envs/.env.offline-with-vision.example
 # Set:
 # - EXTRACTION_MODE=markitdown
 # - EMBEDDINGS_MODE=huggingface
-# - VECTOR_STORE=chromadb
-# - ENABLE_MEDIA_DESCRIPTION=false  # For 100% offline
+# - VECTOR_STORE_MODE=chromadb
+# - MEDIA_DESCRIBER_MODE=disabled  # For 100% offline
 
 # 2. Download models (ONE TIME, requires internet)
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-mpnet-base-v2')"
