@@ -124,7 +124,7 @@ AZURE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
 INPUT_MODE=local
 
 # For local files
-AZURE_LOCAL_GLOB=./data/*.pdf
+LOCAL_INPUT_GLOB=./data/*.pdf
 
 # For blob storage
 INPUT_MODE=blob
@@ -149,7 +149,7 @@ AZURE_BLOB_PREFIX=documents/
 ```bash
 # Mode: local or blob
 ARTIFACTS_MODE=local
-AZURE_ARTIFACTS_DIR=./artifacts
+LOCAL_ARTIFACTS_DIR=./artifacts
 
 # For blob storage
 ARTIFACTS_MODE=blob
@@ -165,7 +165,7 @@ AZURE_BLOB_CONTAINER_CITATIONS=citations
 
 ```bash
 # Action mode: add, remove, or removeall
-AZURE_DOCUMENT_ACTION=add
+DOCUMENT_ACTION=add
 ```
 
 | Action | Description |
@@ -180,21 +180,21 @@ AZURE_DOCUMENT_ACTION=add
 
 ```bash
 # Media description: gpt4o, content_understanding, or disabled
-AZURE_MEDIA_DESCRIBER=gpt4o
+MEDIA_DESCRIBER_MODE=gpt4o
 
 # Table rendering: plain or markdown
-AZURE_TABLE_RENDER=plain
+TABLE_RENDER_FORMAT=plain
 
 # Generate table summaries with GPT-4o
-AZURE_TABLE_SUMMARIES=false
+TABLE_SUMMARIES=false
 
 # Generate per-page PDFs for citations
-AZURE_GENERATE_PAGE_PDFS=false
+GENERATE_PAGE_PDFS=false
 
 # Embedding mode
 # false = client-side embeddings (Azure OpenAI)
 # true = integrated vectorization (Azure Search)
-AZURE_USE_INTEGRATED_VECTORIZATION=false
+USE_INTEGRATED_VECTORIZATION=false
 ```
 
 ---
@@ -220,7 +220,7 @@ CHUNKING_OVERLAP_PERCENT=10
 MAX_WORKERS=4
 INNER_ANALYZE_WORKERS=1
 UPLOAD_DELAY=0.5
-EMBED_BATCH_SIZE=128
+EMBEDDING_BATCH_SIZE=128
 UPLOAD_BATCH_SIZE=1000
 ```
 

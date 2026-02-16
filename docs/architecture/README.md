@@ -14,6 +14,7 @@ This directory contains comprehensive architecture diagrams and documentation fo
 - **[Document Ingestion Sequence](04_SEQUENCE_DOCUMENT_INGESTION.md)** - ADD workflow step-by-step
 - **[Document Removal Sequence](05_SEQUENCE_DOCUMENT_REMOVAL.md)** - REMOVE workflow
 - **[Index Management Sequence](06_SEQUENCE_INDEX_MANAGEMENT.md)** - Index setup and deletion
+- **[Configuration Validation Sequence](08_SEQUENCE_VALIDATION.md)** - Pre-check validation workflow
 
 ### DrawIO Diagrams
 - **[DrawIO Architecture](07_DRAWIO_ARCHITECTURE.drawio)** - Editable architecture diagram (legacy)
@@ -36,7 +37,7 @@ See [Pluggable Architecture](07_PLUGGABLE_ARCHITECTURE.md) for all supported com
 - [Technical Reference](../reference/) - Detailed technical specifications
 - [Configuration Guide](../guides/CONFIGURATION.md) - Configuration options
 - [Performance Tuning](../guides/PERFORMANCE_TUNING.md) - Optimization strategies
-- [Logging Guide](../LOGGING_GUIDE.md) - Centralized logging system and best practices
+- [Logging Guide](../guides/LOGGING_GUIDE.md) - Centralized logging system and best practices
 
 ---
 
