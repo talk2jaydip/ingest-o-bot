@@ -460,8 +460,8 @@ cp envs/.env.scenario-cost-optimized.example .env && python -m ingestor.cli --se
 - **[Complete Scenarios Guide](SCENARIOS_GUIDE.md)** - Detailed scenarios with examples
 - **[Configuration Flags Guide](CONFIGURATION_FLAGS_GUIDE.md)** - All parameters explained
 - **[Environment Variables Reference](../docs/reference/12_ENVIRONMENT_VARIABLES.md)** - Complete reference
-- **[Vector Stores Guide](../docs/vector_stores.md)** - Vector database details
-- **[Embeddings Providers Guide](../docs/embeddings_providers.md)** - Embedding provider details
+- **[Vector Stores Guide](../docs/guides/VECTOR_STORES_GUIDE.md)** - Vector database details
+- **[Embeddings Providers Guide](../docs/guides/EMBEDDINGS_PROVIDERS_GUIDE.md)** - Embedding provider details
 
 ---
 
