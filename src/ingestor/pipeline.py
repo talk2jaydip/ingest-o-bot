@@ -14,7 +14,7 @@ from .chunker import LayoutAwareChunker, TextChunk, create_chunker
 from .config import PipelineConfig
 from .di_extractor import DocumentIntelligenceExtractor, ExtractedPage
 from .office_extractor import OfficeExtractor
-from .embeddings import EmbeddingsGenerator, create_embeddings_generator
+from .embeddings import EmbeddingsGenerator
 from .embeddings_provider import EmbeddingsProvider, create_embeddings_provider
 from .input_source import InputSource, create_input_source
 from .logging_utils import (
@@ -39,7 +39,7 @@ from .models import (
     TableReference,
 )
 from .page_splitter import PagePdfSplitter
-from .search_uploader import SearchUploader, create_search_uploader
+from .search_uploader import SearchUploader
 from .table_renderer import TableRenderer, create_table_renderer
 from .validator import PipelineValidator
 from .vector_store import VectorStore, create_vector_store
@@ -408,6 +408,24 @@ class Pipeline:
             )
 
         if self.media_describer is None:
+            # Validate media describer configuration before creating
+            from .config import validate_media_describer_config
+            media_describer_errors = validate_media_describer_config(
+                self.config.media_describer_mode,
+                self.config.azure_openai,
+                self.config.content_understanding
+            )
+
+            if media_describer_errors:
+                error_msg = (
+                    "Media describer configuration is invalid:\n\n" +
+                    "\n\n".join(f"  • {error}" for error in media_describer_errors) +
+                    "\n\nFix these issues in your .env file, or disable media description:\n"
+                    "  MEDIA_DESCRIBER_MODE=disabled\n\n"
+                    "See: envs/.env.azure-local-input.example"
+                )
+                raise ValueError(error_msg)
+
             self.media_describer = create_media_describer(
                 self.config.media_describer_mode,
                 self.config.azure_openai,
@@ -430,6 +448,19 @@ class Pipeline:
                 config = self.config.azure_openai
 
             logger.info(f"  Mode: {mode.value}")
+
+            # Validate embeddings configuration before creating provider
+            from .config import validate_embeddings_config
+            embeddings_errors = validate_embeddings_config(mode, config)
+
+            if embeddings_errors:
+                error_msg = (
+                    f"Embeddings configuration is invalid for EMBEDDINGS_MODE={mode.value}:\n\n" +
+                    "\n\n".join(f"  • {error}" for error in embeddings_errors) +
+                    "\n\nFix these issues in your .env file.\n\n"
+                    "See: envs/.env.azure-local-input.example"
+                )
+                raise ValueError(error_msg)
 
             # Create provider
             self.embeddings_provider = create_embeddings_provider(mode, config)

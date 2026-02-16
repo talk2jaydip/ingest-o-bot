@@ -137,13 +137,27 @@ class ChromaDBVectorStore(VectorStore):
             # Use generic format from to_vector_document()
             doc_dict = chunk_doc.to_vector_document(include_embeddings=True)
 
-            # ChromaDB doesn't accept empty lists in metadata - filter them out
+            # ChromaDB doesn't accept list values, None, or dict in metadata - clean them up
             clean_metadata = {}
             for key, value in doc_dict["metadata"].items():
-                if isinstance(value, list) and len(value) == 0:
-                    # Skip empty lists - ChromaDB validation rejects them
+                # Skip None values (ChromaDB doesn't handle them properly)
+                if value is None:
                     continue
-                clean_metadata[key] = value
+
+                # Skip dict values (ChromaDB doesn't support nested structures)
+                if isinstance(value, dict):
+                    continue
+
+                if isinstance(value, list):
+                    if len(value) == 0:
+                        # Skip empty lists
+                        continue
+                    else:
+                        # Convert non-empty lists to comma-separated string
+                        clean_metadata[key] = ", ".join(str(v) for v in value)
+                else:
+                    # Ensure value is a simple type (str, int, float, bool)
+                    clean_metadata[key] = value
 
             ids.append(doc_dict["id"])
             embeddings.append(doc_dict["embedding"])

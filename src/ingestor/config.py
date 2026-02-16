@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from ingestor.logging_utils import get_logger
 
@@ -1228,9 +1228,9 @@ class PipelineConfig:
 
     # New pluggable architecture fields (optional for backward compatibility)
     vector_store_mode: Optional[VectorStoreMode] = None  # Auto-detected from environment or legacy config
-    vector_store_config: Optional[any] = None  # Union of SearchConfig, ChromaDBConfig, etc.
+    vector_store_config: Optional[Any] = None  # Union of SearchConfig, ChromaDBConfig, etc.
     embeddings_mode: Optional[EmbeddingsMode] = None  # Auto-detected from environment or legacy config
-    embeddings_config: Optional[any] = None  # Union of AzureOpenAIConfig, HuggingFaceConfig, etc.
+    embeddings_config: Optional[Any] = None  # Union of AzureOpenAIConfig, HuggingFaceConfig, etc.
     
     @classmethod
     def from_env(cls, env_path: Optional[str] = None) -> "PipelineConfig":
@@ -1437,6 +1437,188 @@ class PipelineConfig:
             embeddings_mode=embeddings_mode,
             embeddings_config=embeddings_config
         )
+
+
+def validate_media_describer_config(
+    media_describer_mode: MediaDescriberMode,
+    azure_openai_config: AzureOpenAIConfig,
+    content_understanding_config: Optional[ContentUnderstandingConfig]
+) -> list[str]:
+    """Validate media describer configuration and return list of errors.
+
+    Args:
+        media_describer_mode: Selected media describer mode
+        azure_openai_config: Azure OpenAI configuration
+        content_understanding_config: Content Understanding configuration (optional)
+
+    Returns:
+        List of configuration error messages (empty if valid)
+    """
+    errors = []
+
+    if media_describer_mode == MediaDescriberMode.DISABLED:
+        # No validation needed for disabled mode
+        return errors
+
+    elif media_describer_mode == MediaDescriberMode.GPT4O:
+        # Validate Azure OpenAI configuration for GPT-4o vision
+        if not azure_openai_config.endpoint:
+            errors.append(
+                "MEDIA_DESCRIBER_MODE=gpt4o requires AZURE_OPENAI_ENDPOINT.\n"
+                "  Set: AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/"
+            )
+
+        if not azure_openai_config.api_key:
+            errors.append(
+                "MEDIA_DESCRIBER_MODE=gpt4o requires AZURE_OPENAI_KEY.\n"
+                "  Set: AZURE_OPENAI_KEY=your-api-key"
+            )
+
+        if not azure_openai_config.vision_deployment:
+            errors.append(
+                "MEDIA_DESCRIBER_MODE=gpt4o requires AZURE_OPENAI_VISION_DEPLOYMENT.\n"
+                "  Set: AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o\n"
+                "  Tip: Use gpt-4o-mini for 5x lower cost"
+            )
+
+        if not azure_openai_config.vision_model_name:
+            errors.append(
+                "MEDIA_DESCRIBER_MODE=gpt4o requires AZURE_OPENAI_VISION_MODEL.\n"
+                "  Set: AZURE_OPENAI_VISION_MODEL=gpt-4o"
+            )
+
+    elif media_describer_mode == MediaDescriberMode.CONTENT_UNDERSTANDING:
+        # Validate Content Understanding configuration
+        if not content_understanding_config or not content_understanding_config.endpoint:
+            errors.append(
+                "MEDIA_DESCRIBER_MODE=content_understanding requires AZURE_CONTENT_UNDERSTANDING_ENDPOINT.\n"
+                "  NOTE: This mode is not yet fully implemented.\n"
+                "  Alternative: Use MEDIA_DESCRIBER_MODE=gpt4o"
+            )
+
+    return errors
+
+
+def validate_embeddings_config(
+    embeddings_mode: EmbeddingsMode,
+    embeddings_config: Optional[Any]
+) -> list[str]:
+    """Validate embeddings configuration and return list of errors.
+
+    Only validates the selected embeddings mode's required variables.
+    Other embeddings configurations are ignored (override precedence).
+
+    Args:
+        embeddings_mode: Selected embeddings mode
+        embeddings_config: Embeddings configuration for the selected mode
+
+    Returns:
+        List of configuration error messages (empty if valid)
+    """
+    errors = []
+
+    if embeddings_mode == EmbeddingsMode.AZURE_OPENAI:
+        # Validate Azure OpenAI embeddings configuration
+        if not embeddings_config:
+            errors.append(
+                "EMBEDDINGS_MODE=azure_openai requires Azure OpenAI configuration.\n"
+                "  Missing: Azure OpenAI config"
+            )
+            return errors
+
+        # Check required fields for embeddings
+        if not embeddings_config.endpoint:
+            errors.append(
+                "EMBEDDINGS_MODE=azure_openai requires AZURE_OPENAI_ENDPOINT.\n"
+                "  Set: AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/"
+            )
+
+        if not embeddings_config.api_key:
+            errors.append(
+                "EMBEDDINGS_MODE=azure_openai requires AZURE_OPENAI_KEY.\n"
+                "  Set: AZURE_OPENAI_KEY=your-api-key"
+            )
+
+        if not embeddings_config.emb_deployment:
+            errors.append(
+                "EMBEDDINGS_MODE=azure_openai requires AZURE_OPENAI_EMBEDDING_DEPLOYMENT.\n"
+                "  Set: AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002\n"
+                "  Tip: Use text-embedding-3-small for better quality at lower cost"
+            )
+
+        if not embeddings_config.emb_model_name:
+            errors.append(
+                "EMBEDDINGS_MODE=azure_openai requires AZURE_OPENAI_EMBEDDING_MODEL.\n"
+                "  Set: AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002"
+            )
+
+    elif embeddings_mode == EmbeddingsMode.HUGGINGFACE:
+        # Validate HuggingFace embeddings configuration
+        if not embeddings_config:
+            errors.append(
+                "EMBEDDINGS_MODE=huggingface requires HuggingFace configuration.\n"
+                "  Missing: HuggingFace config"
+            )
+            return errors
+
+        # HuggingFace only requires model_name (other fields have defaults)
+        if not embeddings_config.model_name:
+            errors.append(
+                "EMBEDDINGS_MODE=huggingface requires HUGGINGFACE_MODEL_NAME.\n"
+                "  Set: HUGGINGFACE_MODEL_NAME=BAAI/bge-large-en-v1.5\n"
+                "  Popular options:\n"
+                "    - BAAI/bge-large-en-v1.5 (1024 dims, SOTA English)\n"
+                "    - sentence-transformers/all-MiniLM-L6-v2 (384 dims, fast)\n"
+                "    - intfloat/multilingual-e5-large (1024 dims, multilingual)"
+            )
+
+    elif embeddings_mode == EmbeddingsMode.COHERE:
+        # Validate Cohere embeddings configuration
+        if not embeddings_config:
+            errors.append(
+                "EMBEDDINGS_MODE=cohere requires Cohere configuration.\n"
+                "  Missing: Cohere config"
+            )
+            return errors
+
+        if not embeddings_config.api_key:
+            errors.append(
+                "EMBEDDINGS_MODE=cohere requires COHERE_API_KEY.\n"
+                "  Set: COHERE_API_KEY=your-cohere-api-key\n"
+                "  Get API key: https://dashboard.cohere.com/api-keys"
+            )
+
+        if not embeddings_config.model_name:
+            errors.append(
+                "EMBEDDINGS_MODE=cohere requires COHERE_MODEL_NAME.\n"
+                "  Set: COHERE_MODEL_NAME=embed-multilingual-v3.0\n"
+                "  Options: embed-english-v3.0 | embed-multilingual-v3.0"
+            )
+
+    elif embeddings_mode == EmbeddingsMode.OPENAI:
+        # Validate OpenAI embeddings configuration
+        if not embeddings_config:
+            errors.append(
+                "EMBEDDINGS_MODE=openai requires OpenAI configuration.\n"
+                "  Missing: OpenAI config"
+            )
+            return errors
+
+        if not embeddings_config.api_key:
+            errors.append(
+                "EMBEDDINGS_MODE=openai requires OPENAI_API_KEY.\n"
+                "  Set: OPENAI_API_KEY=sk-your-openai-api-key\n"
+                "  Get API key: https://platform.openai.com/api-keys"
+            )
+
+        if not embeddings_config.model_name:
+            errors.append(
+                "EMBEDDINGS_MODE=openai requires OPENAI_EMBEDDING_MODEL.\n"
+                "  Set: OPENAI_EMBEDDING_MODEL=text-embedding-3-small\n"
+                "  Options: text-embedding-3-small | text-embedding-3-large"
+            )
+
+    return errors
 
 
 def load_config(env_path: Optional[str] = None) -> PipelineConfig:
