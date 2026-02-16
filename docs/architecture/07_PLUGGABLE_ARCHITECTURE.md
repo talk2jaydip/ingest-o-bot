@@ -487,9 +487,9 @@ def create_vector_store(config: PipelineConfig, embeddings_provider) -> VectorSt
 
 ## Related Documentation
 
-- [Vector Stores Guide](../vector_stores.md) - Detailed vector store comparison
-- [Embeddings Providers Guide](../embeddings_providers.md) - Detailed embeddings comparison
-- [Configuration Examples](../configuration_examples.md) - All configuration scenarios
+- [Vector Stores Guide](../guides/VECTOR_STORES_GUIDE.md) - Detailed vector store comparison
+- [Embeddings Providers Guide](../guides/EMBEDDINGS_PROVIDERS_GUIDE.md) - Detailed embeddings comparison
+- [Configuration Examples](../guides/CONFIGURATION_EXAMPLES.md) - All configuration scenarios
 - [High-Level Architecture](01_HIGH_LEVEL_ARCHITECTURE.md) - System overview
 - [Component Interactions](02_COMPONENT_INTERACTIONS.md) - Component relationships
 - [Data Flow](03_DATA_FLOW.md) - End-to-end processing

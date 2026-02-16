@@ -58,22 +58,23 @@ Located in `docs/guides/`:
 | 2 | [Quick Reference](guides/QUICK_REFERENCE.md) | Fast lookup guide for common operations |
 | 3 | [Validation Guide](guides/VALIDATION.md) | ⭐ **Pre-check validation of configuration and environment** |
 | 4 | [Gradio UI Guide](guides/GRADIO_UI_GUIDE.md) | ⭐ **Complete web interface user guide** |
-| 5 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
-| 6 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
-| 7 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
-| 8 | [Artifact Storage Simplified](guides/ARTIFACT_STORAGE_SIMPLIFIED.md) | Simplified artifact storage configuration guide |
-| 9 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
-| 10 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
-| 11 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
-| 12 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
+| 5 | [CLI Complete Guide](guides/CLI_COMPLETE_GUIDE.md) | Complete CLI usage, testing, and automation guide |
+| 6 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
+| 7 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
+| 8 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
+| 9 | [Artifact Storage Simplified](guides/ARTIFACT_STORAGE_SIMPLIFIED.md) | Simplified artifact storage configuration guide |
+| 10 | [Logging Guide](guides/LOGGING_GUIDE.md) | Centralized logging system and best practices |
+| 11 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
+| 12 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
+| 13 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
 
 ### Pluggable Architecture
 
 | # | Guide | Description |
 |---|-------|-------------|
-| 1 | [Vector Stores Guide](vector_stores.md) | ⭐ **Choose your vector database (Azure Search, ChromaDB)** |
-| 2 | [Embeddings Providers Guide](embeddings_providers.md) | ⭐ **Choose your embedding model (Azure OpenAI, Hugging Face, Cohere, OpenAI)** |
-| 3 | [Configuration Examples](configuration_examples.md) | ⭐ **All combinations and use cases (8 ready-to-use configurations)** |
+| 1 | [Vector Stores Guide](guides/VECTOR_STORES_GUIDE.md) | ⭐ **Choose your vector database (Azure Search, ChromaDB)** |
+| 2 | [Embeddings Providers Guide](guides/EMBEDDINGS_PROVIDERS_GUIDE.md) | ⭐ **Choose your embedding model (Azure OpenAI, Hugging Face, Cohere, OpenAI)** |
+| 3 | [Configuration Examples](guides/CONFIGURATION_EXAMPLES.md) | ⭐ **All combinations and use cases (8 ready-to-use configurations)** |
 
 ---
 
@@ -142,12 +143,14 @@ Located in `docs/architecture/` - Visual representations of system design:
 | 4 | [Document Ingestion Sequence](architecture/04_SEQUENCE_DOCUMENT_INGESTION.md) | ⭐ **Step-by-step ADD workflow** |
 | 5 | [Document Removal Sequence](architecture/05_SEQUENCE_DOCUMENT_REMOVAL.md) | REMOVE workflow details |
 | 6 | [Index Management Sequence](architecture/06_SEQUENCE_INDEX_MANAGEMENT.md) | Setup, deletion, and REMOVE_ALL operations |
-| 7 | [DrawIO Architecture](architecture/07_DRAWIO_ARCHITECTURE.drawio) | Editable architecture diagram (import into diagrams.net) |
+| 7 | [Pluggable Architecture](architecture/07_PLUGGABLE_ARCHITECTURE.md) | Embeddings & vector store combinations |
+| 8 | [Configuration Validation Sequence](architecture/08_SEQUENCE_VALIDATION.md) | ⭐ **Pre-check validation workflow** |
 
 **Getting Started with Diagrams:**
 - New to the system? Start with [High-Level Architecture](architecture/01_HIGH_LEVEL_ARCHITECTURE.md)
+- Validating setup? See [Configuration Validation Sequence](architecture/08_SEQUENCE_VALIDATION.md)
 - Understanding workflows? Check [Document Ingestion Sequence](architecture/04_SEQUENCE_DOCUMENT_INGESTION.md)
-- Need editable diagram? Use [DrawIO file](architecture/07_DRAWIO_ARCHITECTURE.drawio) with diagrams.net
+- Need pluggable options? Review [Pluggable Architecture](architecture/07_PLUGGABLE_ARCHITECTURE.md)
 
 ---
 
@@ -156,21 +159,26 @@ Located in `docs/architecture/` - Visual representations of system design:
 ```
 docs/
 ├── INDEX.md                       # This file - main documentation index
-├── LOGGING_GUIDE.md              # Centralized logging system guide
 │
-├── guides/                        # User-facing guides (10 guides)
+├── guides/                        # User-facing guides (16 guides)
 │   ├── QUICKSTART.md             # Get started in 5 minutes
 │   ├── QUICK_REFERENCE.md        # Fast lookup guide
 │   ├── VALIDATION.md             # Configuration validation guide
+│   ├── GRADIO_UI_GUIDE.md        # Web interface complete guide
+│   ├── CLI_COMPLETE_GUIDE.md     # CLI usage, testing, and automation
 │   ├── LIBRARY_USAGE.md          # Using as a Python library
 │   ├── CONFIGURATION.md          # Complete configuration reference
 │   ├── ENVIRONMENT_AND_SECRETS.md # Managing environments
 │   ├── ARTIFACT_STORAGE_SIMPLIFIED.md # Artifact storage configuration
+│   ├── LOGGING_GUIDE.md          # Centralized logging system guide
 │   ├── BATCH_PROCESSING.md       # Batch processing and parallel execution
 │   ├── PERFORMANCE_TUNING.md     # Performance optimization guide
-│   └── INDEX_DEPLOYMENT_GUIDE.md # Index deployment guide
+│   ├── INDEX_DEPLOYMENT_GUIDE.md # Index deployment guide
+│   ├── VECTOR_STORES_GUIDE.md    # Vector database options
+│   ├── EMBEDDINGS_PROVIDERS_GUIDE.md # Embedding model providers
+│   └── CONFIGURATION_EXAMPLES.md # Ready-to-use configuration examples
 │
-├── architecture/                  # Architecture diagrams (7 diagrams)
+├── architecture/                  # Architecture diagrams (8 diagrams)
 │   ├── README.md                 # Architecture documentation index
 │   ├── 01_HIGH_LEVEL_ARCHITECTURE.md    # System overview
 │   ├── 02_COMPONENT_INTERACTIONS.md     # Component relationships
@@ -178,7 +186,8 @@ docs/
 │   ├── 04_SEQUENCE_DOCUMENT_INGESTION.md # ADD workflow
 │   ├── 05_SEQUENCE_DOCUMENT_REMOVAL.md  # REMOVE workflow
 │   ├── 06_SEQUENCE_INDEX_MANAGEMENT.md  # Index operations
-│   └── 07_DRAWIO_ARCHITECTURE.drawio    # Editable diagram
+│   ├── 07_PLUGGABLE_ARCHITECTURE.md     # Pluggable architecture details
+│   └── 08_SEQUENCE_VALIDATION.md        # Pre-check validation workflow
 │
 └── reference/                     # Technical reference (22 docs)
     ├── 01_CONFIGURATION_MATRIX.md
@@ -205,18 +214,6 @@ docs/
     ├── 23_KNOWN_LIMITATIONS.md
     └── validation-reference.md    # Validation system reference
 
-scripts/
-├── utils/                         # Utility scripts
-│   ├── validate_config.py        # Validation script
-│   └── README.md
-│
-└── diagnostics/                   # Diagnostic and test scripts
-    ├── test_*.py                  # Test scripts
-    ├── verify_*.py                # Verification scripts
-    ├── diagnose_*.py              # Diagnostic scripts
-    ├── check_*.py                 # Check scripts
-    ├── analyze_*.py               # Analysis scripts
-    └── README.md
 ```
 
 ---
@@ -301,7 +298,7 @@ This documentation structure was reorganized to match the implementation order:
 - **Optimizing performance?** → Check [Performance Tuning Guide](guides/PERFORMANCE_TUNING.md)
 - **Configuring the pipeline?** → Review [Configuration Guide](guides/CONFIGURATION.md)
 - **Managing environments?** → See [Environment & Secrets Guide](guides/ENVIRONMENT_AND_SECRETS.md)
-- **Configuring logging?** → See [Logging Guide](LOGGING_GUIDE.md)
+- **Configuring logging?** → See [Logging Guide](guides/LOGGING_GUIDE.md)
 - **Understanding a feature?** → Check [Features](reference/17_FEATURES.md)
 - **Troubleshooting?** → Review [Environment Variables](reference/12_ENVIRONMENT_VARIABLES.md)
 - **Advanced topics?** → Browse [Architecture](reference/18_ARCHITECTURE.md)
