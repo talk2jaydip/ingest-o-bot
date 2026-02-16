@@ -254,7 +254,14 @@ class PipelineValidator:
                     blob_service = BlobServiceClient.from_connection_string(
                         self.config.artifacts.blob_connection_string
                     )
+                elif self.config.artifacts.blob_key:
+                    # Use account key authentication (most common)
+                    blob_service = BlobServiceClient(
+                        account_url=self.config.artifacts.blob_account_url,
+                        credential=self.config.artifacts.blob_key
+                    )
                 else:
+                    # Fall back to DefaultAzureCredential for managed identity
                     from azure.identity import DefaultAzureCredential
                     blob_service = BlobServiceClient(
                         account_url=self.config.artifacts.blob_account_url,
@@ -272,8 +279,9 @@ class PipelineValidator:
                 if self.config.artifacts.blob_container_citations:
                     containers.append(("citations", self.config.artifacts.blob_container_citations))
 
-                all_ok = True
-                for container_type, container_name in containers:
+                # Validate all containers in parallel for efficiency
+                async def check_container(container_type: str, container_name: str):
+                    """Check if container exists and is accessible."""
                     if not container_name:
                         self.add_result(
                             False,
@@ -281,8 +289,7 @@ class PipelineValidator:
                             f"{container_type} container not configured",
                             f"Set AZURE_BLOB_CONTAINER_OUT_{container_type.upper()} or AZURE_STORAGE_CONTAINER"
                         )
-                        all_ok = False
-                        continue
+                        return False
 
                     try:
                         container_client = blob_service.get_container_client(container_name)
@@ -297,6 +304,7 @@ class PipelineValidator:
                                     f"Artifacts Storage (Blob - {container_type})",
                                     f"Container created: {container_name}"
                                 )
+                                return True
                             except Exception as create_err:
                                 self.add_result(
                                     False,
@@ -304,13 +312,14 @@ class PipelineValidator:
                                     f"Container does not exist and cannot be created: {container_name}",
                                     f"Create the container manually or check permissions"
                                 )
-                                all_ok = False
+                                return False
                         else:
                             self.add_result(
                                 True,
                                 f"Artifacts Storage (Blob - {container_type})",
                                 f"Container accessible: {container_name}"
                             )
+                            return True
                     except Exception as e:
                         self.add_result(
                             False,
@@ -318,7 +327,11 @@ class PipelineValidator:
                             f"Cannot access container '{container_name}': {e}",
                             "Check container name and permissions"
                         )
-                        all_ok = False
+                        return False
+
+                # Check all containers in parallel
+                results = await asyncio.gather(*[check_container(ctype, cname) for ctype, cname in containers])
+                all_ok = all(results)
 
             except ImportError:
                 self.add_result(
