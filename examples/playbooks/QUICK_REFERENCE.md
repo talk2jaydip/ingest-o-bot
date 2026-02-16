@@ -203,7 +203,6 @@ AZURE_OFFICE_VERBOSE=true
 ## Support & Resources
 
 - **Comprehensive Guide:** [README.md](README.md)
-- **Playbook Comparison:** [PLAYBOOKS_SUMMARY.md](PLAYBOOKS_SUMMARY.md)
 - **Main Docs:** [../../docs/INDEX.md](../../docs/INDEX.md)
 - **GitHub Issues:** Report bugs and request features
 
