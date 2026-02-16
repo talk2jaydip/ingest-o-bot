@@ -62,6 +62,13 @@ try:
 except ImportError:
     AZURE_SEARCH_AVAILABLE = False
 
+# Try to import ChromaDB
+try:
+    import chromadb
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+
 # Global log queue for real-time streaming
 log_queue = queue.Queue()
 
