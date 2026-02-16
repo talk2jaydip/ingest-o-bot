@@ -237,52 +237,47 @@ def validate_configuration(auto_validation: bool = False) -> Tuple[str, str, boo
         # Build detailed HTML output
         html = f"""
         <div style="font-family: 'Segoe UI', sans-serif; padding: 20px; background: white; border-radius: 5px;">
-            <h3 style="color: {('#27ae60' if result.is_valid else '#e74c3c')}; margin-top: 0;">
-                {'✅ Configuration Valid' if result.is_valid else '❌ Configuration Invalid'}
+            <h3 style="color: {('#27ae60' if result.valid else '#e74c3c')}; margin-top: 0;">
+                {'✅ Configuration Valid' if result.valid else '❌ Configuration Invalid'}
             </h3>
         """
 
         # Detected scenario
-        if result.detected_scenario:
-            scenario_name = result.detected_scenario.name.replace('_', ' ').title()
+        if result.scenario:
+            scenario_name = result.scenario.value.replace('_', ' ').title()
             html += f"""
             <div style="background: #e8f8f5; padding: 15px; border-left: 4px solid #27ae60; margin: 15px 0;">
                 <strong>🎯 Detected Scenario:</strong> {scenario_name}
-                <br/>
-                <span style="color: #555;">{result.detected_scenario.description}</span>
             </div>
             """
 
-        # Required variables
-        if result.required_vars:
-            html += "<h4 style='color: #2c3e50;'>📋 Required Variables:</h4><ul>"
-            for var_name in result.required_vars:
-                is_set = var_name in result.set_vars
-                icon = "✅" if is_set else "❌"
-                color = "#27ae60" if is_set else "#e74c3c"
-                html += f"<li style='color: {color};'>{icon} <code>{var_name}</code></li>"
-            html += "</ul>"
-
-        # Optional variables
-        if result.optional_vars:
-            html += "<h4 style='color: #2c3e50;'>⚙️ Optional Variables:</h4><ul>"
-            for var_name in result.optional_vars:
-                is_set = var_name in result.set_vars
-                icon = "✅" if is_set else "⚪"
-                color = "#27ae60" if is_set else "#95a5a6"
-                html += f"<li style='color: {color};'>{icon} <code>{var_name}</code></li>"
+        # Errors
+        if result.errors:
+            html += "<h4 style='color: #e74c3c;'>❌ Errors:</h4><ul>"
+            for error in result.errors:
+                html += f"<li style='color: #e74c3c;'>{error}</li>"
             html += "</ul>"
 
         # Missing required variables
-        missing_required = set(result.required_vars) - set(result.set_vars)
-        if missing_required:
+        if result.missing_required:
             html += f"""
             <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 15px 0;">
                 <strong>⚠️ Missing Required Variables:</strong>
                 <ul style="margin: 10px 0 0 0;">
             """
-            for var_name in missing_required:
+            for var_name in result.missing_required:
                 html += f"<li><code>{var_name}</code></li>"
+            html += "</ul></div>"
+
+        # Invalid values
+        if result.invalid_values:
+            html += f"""
+            <div style="background: #ffe6e6; padding: 15px; border-left: 4px solid #e74c3c; margin: 15px 0;">
+                <strong>❌ Invalid Values:</strong>
+                <ul style="margin: 10px 0 0 0;">
+            """
+            for var_name, issue in result.invalid_values.items():
+                html += f"<li><code>{var_name}</code>: {issue}</li>"
             html += "</ul></div>"
 
         # Warnings
@@ -292,17 +287,10 @@ def validate_configuration(auto_validation: bool = False) -> Tuple[str, str, boo
                 html += f"<li style='color: #f39c12;'>{warning}</li>"
             html += "</ul>"
 
-        # Recommendations
-        if result.recommendations:
-            html += "<h4 style='color: #3498db;'>💡 Recommendations:</h4><ul>"
-            for rec in result.recommendations:
-                html += f"<li style='color: #555;'>{rec}</li>"
-            html += "</ul>"
-
         html += "</div>"
 
         # Build status badge
-        if result.is_valid:
+        if result.valid:
             if result.warnings:
                 status_badge = format_validation_badge(True, has_warnings=True)
             else:
@@ -310,7 +298,7 @@ def validate_configuration(auto_validation: bool = False) -> Tuple[str, str, boo
         else:
             status_badge = format_validation_badge(False)
 
-        return html, status_badge, result.is_valid
+        return html, status_badge, result.valid
 
     except Exception as e:
         logger.error(f"Validation failed: {e}")
@@ -391,7 +379,16 @@ def list_blob_containers():
 # =============================================================================
 
 def get_search_client():
-    """Get Azure Search client from environment variables."""
+    """Get Azure Search client from environment variables.
+
+    Only creates a client if VECTOR_STORE_MODE is set to 'azure_search'.
+    """
+    # Check if Azure Search is the active vector store
+    vector_store_mode = os.getenv("VECTOR_STORE_MODE", "azure_search").lower()
+    if vector_store_mode != "azure_search":
+        logger.debug(f"Skipping Azure Search client creation - VECTOR_STORE_MODE is '{vector_store_mode}'")
+        return None
+
     if not AZURE_SEARCH_AVAILABLE:
         return None
 
@@ -701,6 +698,63 @@ def test_search_connection():
         import traceback
         error_details = traceback.format_exc()
         logger.error(f"Connection test failed: {error_details}")
+        return False, f"❌ Connection failed: {str(e)}"
+
+
+def test_chromadb_connection():
+    """Test connection to ChromaDB.
+
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    if not CHROMADB_AVAILABLE:
+        return False, "❌ ChromaDB not installed. Run: pip install chromadb"
+
+    try:
+        from ingestor.ui.helpers import get_chromadb_client, list_chromadb_collections
+
+        # Try to get client
+        client = get_chromadb_client()
+        if not client:
+            return False, "❌ ChromaDB client not configured. Set CHROMADB_PERSIST_DIR or CHROMADB_HOST/PORT."
+
+        # Get collections
+        collections = list_chromadb_collections()
+
+        # Filter out error messages
+        actual_collections = [c for c in collections if not c.startswith("⚠️")]
+        collection_count = len(actual_collections)
+
+        # Get mode information
+        persist_dir = os.getenv("CHROMADB_PERSIST_DIR", "")
+        host = os.getenv("CHROMADB_HOST", "")
+        port = os.getenv("CHROMADB_PORT", "")
+
+        if host and port:
+            mode = f"Client/Server ({host}:{port})"
+        elif persist_dir:
+            mode = f"Persistent ({persist_dir})"
+        else:
+            mode = "In-Memory"
+
+        # Get sample collection info if available
+        sample_info = ""
+        if actual_collections:
+            from ingestor.ui.helpers import get_collection_info
+            sample_collection = actual_collections[0]
+            info = get_collection_info(sample_collection)
+            if "error" not in info:
+                sample_info = f"\n📋 Collections ({collection_count}): {', '.join(actual_collections[:3])}"
+                if collection_count > 3:
+                    sample_info += f", ... (+{collection_count - 3} more)"
+                sample_info += f"\n📄 Sample: '{sample_collection}' - {info['count']} chunks, {info['dimensions']} dimensions"
+
+        return True, f"✅ Connected to ChromaDB ({mode})\n📊 Found {collection_count} collection(s){sample_info}"
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"ChromaDB connection test failed: {error_details}")
         return False, f"❌ Connection failed: {str(e)}"
 
 
@@ -1015,6 +1069,73 @@ ENV_HELP_DATA = [
         default="500",
         example="500",
         category="Performance"
+    ),
+
+    # Vector Store Configuration
+    EnvVarHelp(
+        "VECTOR_STORE_MODE",
+        "Vector store backend selection: 'azure_search' for Azure AI Search (cloud), 'chromadb' for ChromaDB (local)",
+        required=True,
+        sensitive=False,
+        default="azure_search",
+        example="chromadb",
+        category="Vector Store"
+    ),
+
+    # ChromaDB (Local Vector Store)
+    EnvVarHelp(
+        "CHROMADB_COLLECTION_NAME",
+        "ChromaDB collection name for storing document embeddings. Auto-generated if not specified.",
+        required=False,
+        sensitive=False,
+        default="documents",
+        example="my-documents",
+        category="ChromaDB"
+    ),
+    EnvVarHelp(
+        "CHROMADB_PERSIST_DIR",
+        "Directory path for persistent ChromaDB storage. Used when running in local persistent mode.",
+        required=False,
+        sensitive=False,
+        default="./chroma_db",
+        example="./chroma_db",
+        category="ChromaDB"
+    ),
+    EnvVarHelp(
+        "CHROMADB_BATCH_SIZE",
+        "Batch size for uploading chunks to ChromaDB. Larger batches are faster but use more memory.",
+        required=False,
+        sensitive=False,
+        default="1000",
+        example="1000",
+        category="ChromaDB"
+    ),
+    EnvVarHelp(
+        "CHROMADB_HOST",
+        "Remote ChromaDB server hostname. Only required when running ChromaDB in client/server mode.",
+        required=False,
+        sensitive=False,
+        default="",
+        example="localhost",
+        category="ChromaDB"
+    ),
+    EnvVarHelp(
+        "CHROMADB_PORT",
+        "Remote ChromaDB server port. Only required when running ChromaDB in client/server mode.",
+        required=False,
+        sensitive=False,
+        default="",
+        example="8000",
+        category="ChromaDB"
+    ),
+    EnvVarHelp(
+        "CHROMADB_AUTH_TOKEN",
+        "Authentication token for remote ChromaDB server. Required if your ChromaDB server uses authentication.",
+        required=False,
+        sensitive=True,
+        default="",
+        example="your-token-here",
+        category="ChromaDB"
     ),
 ]
 
@@ -2264,6 +2385,97 @@ def create_ui():
                 ### Discover, analyze, and verify your indexed documents with powerful search and navigation
                 """)
 
+                # ===== VECTOR STORE SELECTOR =====
+                gr.Markdown("---")
+
+                # Vector store availability status
+                with gr.Row():
+                    gr.Markdown("### 🗄️ Vector Store Selection")
+                    vector_store_status = gr.Markdown(
+                        "🔵 **Azure Search**: " + ("Available" if AZURE_SEARCH_AVAILABLE else "Not Installed") +
+                        " | 🟢 **ChromaDB**: " + ("Available" if os.getenv("CHROMADB_PERSIST_DIR") or os.getenv("CHROMADB_HOST") else "Not Configured")
+                    )
+
+                # Vector store selector tabs
+                with gr.Tabs() as vector_store_selector_tabs:
+                    # Azure AI Search Tab
+                    with gr.Tab("🔵 Azure AI Search") as azure_vector_tab:
+                        with gr.Row():
+                            gr.Markdown("**Azure AI Search Vector Store**")
+                            azure_vs_connection = gr.Markdown(
+                                "🟢 Connected" if os.getenv("AZURE_SEARCH_SERVICE") and os.getenv("AZURE_SEARCH_KEY") else "🔴 Not Connected"
+                            )
+
+                        with gr.Accordion("⚙️ Azure Search Configuration", open=False):
+                            gr.Markdown("*Configure connection to Azure AI Search. Values loaded from active .env file.*")
+                            with gr.Row():
+                                azure_vs_refresh_btn = gr.Button("🔄 Refresh from Environment", size="sm")
+
+                            azure_vs_service = gr.Textbox(
+                                label="AZURE_SEARCH_SERVICE",
+                                value=os.getenv("AZURE_SEARCH_SERVICE", ""),
+                                placeholder="your-search-service"
+                            )
+                            azure_vs_index = gr.Textbox(
+                                label="AZURE_SEARCH_INDEX",
+                                value=os.getenv("AZURE_SEARCH_INDEX", ""),
+                                placeholder="documents-index"
+                            )
+                            azure_vs_key = gr.Textbox(
+                                label="AZURE_SEARCH_KEY",
+                                value=os.getenv("AZURE_SEARCH_KEY", "")[:4] + "..." if os.getenv("AZURE_SEARCH_KEY") else "",
+                                placeholder="your-api-key",
+                                type="password"
+                            )
+                            with gr.Row():
+                                azure_vs_save_btn = gr.Button("💾 Save Config (Session)", size="sm")
+                                azure_vs_clear_btn = gr.Button("🗑️ Clear", size="sm")
+                            azure_vs_config_status = gr.Textbox(label="Status", value="", interactive=False)
+
+                    # ChromaDB Tab
+                    with gr.Tab("🟢 ChromaDB") as chromadb_vector_tab:
+                        with gr.Row():
+                            gr.Markdown("**ChromaDB Vector Store (Local/Remote)**")
+                            chromadb_vs_connection = gr.Markdown(
+                                "🟢 Ready" if os.getenv("CHROMADB_PERSIST_DIR") or os.getenv("CHROMADB_HOST") else "🔴 Not Configured"
+                            )
+
+                        with gr.Accordion("⚙️ ChromaDB Configuration", open=False):
+                            gr.Markdown("*Configure ChromaDB connection. Values loaded from active .env file.*")
+                            with gr.Row():
+                                chromadb_vs_refresh_btn = gr.Button("🔄 Refresh from Environment", size="sm")
+
+                            chromadb_vs_mode = gr.Radio(
+                                choices=["Persistent (Local)", "In-Memory", "Client/Server"],
+                                value="Persistent (Local)" if os.getenv("CHROMADB_PERSIST_DIR") else "Client/Server" if os.getenv("CHROMADB_HOST") else "Persistent (Local)",
+                                label="ChromaDB Mode"
+                            )
+                            chromadb_vs_persist_dir = gr.Textbox(
+                                label="CHROMADB_PERSIST_DIR",
+                                value=os.getenv("CHROMADB_PERSIST_DIR", "./chroma_db"),
+                                placeholder="./chroma_db"
+                            )
+                            with gr.Row():
+                                chromadb_vs_host = gr.Textbox(
+                                    label="CHROMADB_HOST",
+                                    value=os.getenv("CHROMADB_HOST", ""),
+                                    placeholder="localhost"
+                                )
+                                chromadb_vs_port = gr.Textbox(
+                                    label="CHROMADB_PORT",
+                                    value=os.getenv("CHROMADB_PORT", ""),
+                                    placeholder="8000"
+                                )
+                            with gr.Row():
+                                chromadb_vs_save_btn = gr.Button("💾 Save Config (Session)", size="sm")
+                                chromadb_vs_clear_btn = gr.Button("🗑️ Clear", size="sm")
+                            chromadb_vs_config_status = gr.Textbox(label="Status", value="", interactive=False)
+
+                # Store active vector store selection
+                active_vector_store = gr.State(value="azure")  # Default to Azure
+
+                gr.Markdown("---")
+
                 # Statistics Dashboard
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -2489,14 +2701,22 @@ def create_ui():
                 filtered_chunk_indices = gr.State(value=[])  # For search filtering
 
                 # Functions for index review
-                def test_connection():
-                    """Test connection to Azure AI Search and update dashboard."""
-                    success, message = test_search_connection()
+                def test_connection(vector_store="azure"):
+                    """Test connection to the selected vector store and update dashboard.
+
+                    Args:
+                        vector_store: Either "azure" for Azure AI Search or "chromadb" for ChromaDB
+                    """
+                    # Call the appropriate test function based on vector store
+                    if vector_store == "chromadb":
+                        success, message = test_chromadb_connection()
+                    else:
+                        success, message = test_search_connection()
 
                     # Update connection indicator
                     if "✅" in message or "Connected" in message:
                         connection_md = "### 🔌 Connection\n**✅ Connected**"
-                        # Extract index name if available
+                        # Extract index/collection name if available
                         if "index" in message.lower():
                             parts = message.split("'")
                             if len(parts) >= 2:
@@ -2504,11 +2724,13 @@ def create_ui():
                                 index_info = f"### 🏷️ Index Info\n**{index_name}**"
                             else:
                                 index_info = "### 🏷️ Index Info\n**Connected**"
+                        elif "collection" in message.lower():
+                            index_info = "### 🏷️ Collection Info\n**Connected**"
                         else:
-                            index_info = "### 🏷️ Index Info\n**Connected**"
+                            index_info = "### 🏷️ Info\n**Connected**"
                     else:
                         connection_md = "### 🔌 Connection\n**❌ Failed**"
-                        index_info = "### 🏷️ Index Info\n**—**"
+                        index_info = "### 🏷️ Info\n**—**"
 
                     return {
                         connection_status: message,
@@ -2516,51 +2738,108 @@ def create_ui():
                         index_info_display: index_info
                     }
 
-                def search_documents(pattern):
-                    """Search for documents by filename pattern with enhanced UI updates."""
+                def search_documents(pattern, vector_store="azure"):
+                    """Search for documents by filename pattern with enhanced UI updates.
+
+                    Args:
+                        pattern: Filename pattern to search for
+                        vector_store: Either "azure" for Azure AI Search or "chromadb" for ChromaDB
+                    """
                     if not pattern or pattern.strip() == "":
                         pattern = "*"
 
-                    docs = search_documents_by_filename(pattern)
+                    # Call appropriate search function based on vector store
+                    if vector_store == "chromadb":
+                        # For ChromaDB, we need to list collections and treat them as documents
+                        from ingestor.ui.helpers import list_chromadb_collections
+                        collections = list_chromadb_collections()
+                        # Filter out error messages
+                        collections = [c for c in collections if not c.startswith("⚠️")]
 
-                    if not docs:
-                        results_info = "**No documents found** 😞\n\nTry a different search pattern or check your index."
-                        status_msg = "❌ No documents found"
+                        # Apply pattern filter if not "*"
+                        if pattern != "*":
+                            import fnmatch
+                            collections = [c for c in collections if fnmatch.fnmatch(c, pattern)]
+
+                        if not collections:
+                            results_info = "**No collections found** 😞\n\nTry a different search pattern or check your ChromaDB configuration."
+                            status_msg = "❌ No collections found"
+                            return {
+                                document_list: [],
+                                connection_status: status_msg,
+                                search_results_info: results_info,
+                                total_docs_display: "### 📚 Total Collections\n**0**",
+                                total_chunks_display: "### 📄 Total Chunks\n**0**"
+                            }
+
+                        # Get collection info for each
+                        from ingestor.ui.helpers import get_collection_info
+                        rows = []
+                        total_chunks = 0
+                        for coll in collections:
+                            info = get_collection_info(coll)
+                            if "error" not in info:
+                                count = info.get("count", 0)
+                                rows.append([coll, count, "ChromaDB Collection"])
+                                total_chunks += count
+                            else:
+                                rows.append([coll, 0, "Error"])
+
+                        results_info = f"""
+**✅ Found {len(collections)} collection(s)** with **{total_chunks} total chunks**
+
+📊 Click on any row to explore chunks and metadata.
+"""
+                        status_msg = f"✅ Found {len(collections)} collection(s) with {total_chunks} chunks"
                         return {
-                            document_list: [],
+                            document_list: rows,
                             connection_status: status_msg,
                             search_results_info: results_info,
-                            total_docs_display: "### 📚 Total Documents\n**0**",
-                            total_chunks_display: "### 📄 Total Chunks\n**0**"
+                            total_docs_display: f"### 📚 Total Collections\n**{len(collections)}**",
+                            total_chunks_display: f"### 📄 Total Chunks\n**{total_chunks}**"
                         }
+                    else:
+                        # Azure AI Search
+                        docs = search_documents_by_filename(pattern)
 
-                    # Format for dataframe
-                    rows = []
-                    total_chunks = 0
-                    for doc in docs:
-                        rows.append([
-                            doc["filename"],
-                            doc["chunk_count"],
-                            doc["category"] or "—"
-                        ])
-                        total_chunks += doc["chunk_count"]
+                        if not docs:
+                            results_info = "**No documents found** 😞\n\nTry a different search pattern or check your index."
+                            status_msg = "❌ No documents found"
+                            return {
+                                document_list: [],
+                                connection_status: status_msg,
+                                search_results_info: results_info,
+                                total_docs_display: "### 📚 Total Documents\n**0**",
+                                total_chunks_display: "### 📄 Total Chunks\n**0**"
+                            }
 
-                    # Create results info markdown
-                    results_info = f"""
+                        # Format for dataframe
+                        rows = []
+                        total_chunks = 0
+                        for doc in docs:
+                            rows.append([
+                                doc["filename"],
+                                doc["chunk_count"],
+                                doc["category"] or "—"
+                            ])
+                            total_chunks += doc["chunk_count"]
+
+                        # Create results info markdown
+                        results_info = f"""
 **✅ Found {len(docs)} document(s)** with **{total_chunks} total chunks**
 
 📊 Click on any row to explore chunks and metadata.
 """
 
-                    status_msg = f"✅ Found {len(docs)} document(s) with {total_chunks} chunks"
+                        status_msg = f"✅ Found {len(docs)} document(s) with {total_chunks} chunks"
 
-                    return {
-                        document_list: rows,
-                        connection_status: status_msg,
-                        search_results_info: results_info,
-                        total_docs_display: f"### 📚 Total Documents\n**{len(docs)}**",
-                        total_chunks_display: f"### 📄 Total Chunks\n**{total_chunks}**"
-                    }
+                        return {
+                            document_list: rows,
+                            connection_status: status_msg,
+                            search_results_info: results_info,
+                            total_docs_display: f"### 📚 Total Documents\n**{len(docs)}**",
+                            total_chunks_display: f"### 📄 Total Chunks\n**{total_chunks}**"
+                        }
 
                 def quick_filter_all():
                     """Quick filter: All documents."""
@@ -2761,8 +3040,14 @@ def create_ui():
 
                     return matching_indices if matching_indices else list(range(len(chunks)))
 
-                def select_document(evt: gr.SelectData, dataframe_data):
-                    """Handle document selection from dataframe with enhanced UI updates."""
+                def select_document(evt: gr.SelectData, dataframe_data, vector_store="azure"):
+                    """Handle document selection from dataframe with enhanced UI updates.
+
+                    Args:
+                        evt: Selection event data
+                        dataframe_data: Dataframe containing documents/collections
+                        vector_store: Either "azure" for Azure AI Search or "chromadb" for ChromaDB
+                    """
                     # Check if dataframe is empty - handle both pandas DataFrame and list
                     if dataframe_data is None:
                         return {
@@ -2811,21 +3096,62 @@ def create_ui():
 **Loading chunks...**
 """
 
-                    # Search for this document to get parent_id
-                    docs = search_documents_by_filename(filename)
-                    if not docs:
-                        return {
-                            chunk_review_section: gr.update(visible=False),
-                            selected_doc_name: filename,
-                            connection_status: f"❌ Could not find document: {filename}",
-                            doc_info_card: f"### ❌ Error\n\nCould not find document: {filename}"
-                        }
+                    # Handle based on vector store
+                    if vector_store == "chromadb":
+                        # For ChromaDB, filename is the collection name
+                        collection_name = filename
+                        from ingestor.ui.helpers import get_collection_chunks
 
-                    doc = docs[0]
-                    parent_id = doc["id"]
+                        # Get chunks from collection
+                        chunks_data, status = get_collection_chunks(collection_name, limit=1000)
 
-                    # Get chunks for this document
-                    chunks = get_document_chunks(parent_id)
+                        if not chunks_data:
+                            return {
+                                chunk_review_section: gr.update(visible=True),
+                                selected_doc_name: collection_name,
+                                selected_doc_id: collection_name,
+                                current_chunks: [],
+                                current_chunk_index: 0,
+                                chunk_navigation_info: "0 / 0",
+                                chunk_page_info: "**Page Info:** —",
+                                chunk_content: "",
+                                chunk_metadata: {},
+                                chunk_metadata_formatted: "*No chunks found*",
+                                chunk_analysis: "*No content to analyze*",
+                                chunk_token_count: "**🔢 Tokens:** 0",
+                                chunk_char_count: "**Characters:** 0",
+                                connection_status: f"⚠️ No chunks found in collection: {collection_name}",
+                                doc_info_card: f"### ⚠️ {collection_name}\n\n**0 chunks found**"
+                            }
+
+                        # Convert ChromaDB chunk format to expected format
+                        chunks = []
+                        for row in chunks_data:
+                            chunks.append({
+                                "chunk_id": row[0] if len(row) > 0 else "",
+                                "sourcepage": row[1] if len(row) > 1 else "",
+                                "page_num": row[1] if len(row) > 1 else "",
+                                "content": row[3] if len(row) > 3 else row[2] if len(row) > 2 else "",
+                                "category": "chromadb"
+                            })
+                        parent_id = collection_name
+                    else:
+                        # Azure AI Search
+                        # Search for this document to get parent_id
+                        docs = search_documents_by_filename(filename)
+                        if not docs:
+                            return {
+                                chunk_review_section: gr.update(visible=False),
+                                selected_doc_name: filename,
+                                connection_status: f"❌ Could not find document: {filename}",
+                                doc_info_card: f"### ❌ Error\n\nCould not find document: {filename}"
+                            }
+
+                        doc = docs[0]
+                        parent_id = doc["id"]
+
+                        # Get chunks for this document
+                        chunks = get_document_chunks(parent_id)
 
                     if not chunks:
                         return {
@@ -3084,15 +3410,150 @@ def create_ui():
                         connection_status: f"✅ Refreshed {len(chunks)} chunks"
                     }
 
+                # ===== VECTOR STORE CONFIGURATION EVENT HANDLERS =====
+                def refresh_azure_vs_config():
+                    """Refresh Azure Search config from environment."""
+                    try:
+                        service = os.getenv("AZURE_SEARCH_SERVICE", "")
+                        index = os.getenv("AZURE_SEARCH_INDEX", "")
+                        key = os.getenv("AZURE_SEARCH_KEY", "")
+                        key_display = key[:4] + "..." if key else ""
+                        status_text = "✅ Refreshed from environment"
+                        conn_status = "🟢 Connected" if service and key else "🔴 Not Connected"
+                        return service, index, key_display, status_text, conn_status
+                    except Exception as e:
+                        return "", "", "", f"❌ Error: {str(e)}", "🔴 Not Connected"
+
+                def save_azure_vs_config(service, index, key):
+                    """Save Azure Search configuration."""
+                    try:
+                        if service:
+                            os.environ["AZURE_SEARCH_SERVICE"] = service
+                        if index:
+                            os.environ["AZURE_SEARCH_INDEX"] = index
+                        if key and not key.endswith("..."):
+                            os.environ["AZURE_SEARCH_KEY"] = key
+                        conn_status = "🟢 Connected" if service and key else "🔴 Not Connected"
+                        return "✅ Azure Search config saved (session only)", conn_status
+                    except Exception as e:
+                        return f"❌ Error: {str(e)}", "🔴 Error"
+
+                def clear_azure_vs_config():
+                    """Clear Azure Search configuration."""
+                    os.environ.pop("AZURE_SEARCH_SERVICE", None)
+                    os.environ.pop("AZURE_SEARCH_INDEX", None)
+                    os.environ.pop("AZURE_SEARCH_KEY", None)
+                    return "", "", "", "✅ Configuration cleared", "🔴 Not Connected"
+
+                def refresh_chromadb_vs_config():
+                    """Refresh ChromaDB config from environment."""
+                    try:
+                        persist_dir = os.getenv("CHROMADB_PERSIST_DIR", "./chroma_db")
+                        host = os.getenv("CHROMADB_HOST", "")
+                        port = os.getenv("CHROMADB_PORT", "")
+
+                        # Determine mode
+                        if host and port:
+                            mode = "Client/Server"
+                            conn_status = "🟢 Ready (Client/Server)"
+                        elif persist_dir:
+                            mode = "Persistent (Local)"
+                            conn_status = "🟢 Ready (Local)"
+                        else:
+                            mode = "In-Memory"
+                            conn_status = "🟡 In-Memory Mode"
+
+                        status_text = "✅ Refreshed from environment"
+                        return mode, persist_dir, host, port, status_text, conn_status
+                    except Exception as e:
+                        return "Persistent (Local)", "./chroma_db", "", "", f"❌ Error: {str(e)}", "🔴 Error"
+
+                def save_chromadb_vs_config(mode, persist_dir, host, port):
+                    """Save ChromaDB configuration."""
+                    try:
+                        if mode == "Persistent (Local)":
+                            if persist_dir:
+                                os.environ["CHROMADB_PERSIST_DIR"] = persist_dir
+                            os.environ.pop("CHROMADB_HOST", None)
+                            os.environ.pop("CHROMADB_PORT", None)
+                            conn_status = "🟢 Ready (Local)"
+                        elif mode == "Client/Server":
+                            if host:
+                                os.environ["CHROMADB_HOST"] = host
+                            if port:
+                                os.environ["CHROMADB_PORT"] = port
+                            os.environ.pop("CHROMADB_PERSIST_DIR", None)
+                            conn_status = "🟢 Ready (Client/Server)"
+                        else:  # In-Memory
+                            os.environ.pop("CHROMADB_PERSIST_DIR", None)
+                            os.environ.pop("CHROMADB_HOST", None)
+                            os.environ.pop("CHROMADB_PORT", None)
+                            conn_status = "🟡 In-Memory Mode"
+                        return "✅ ChromaDB config saved (session only)", conn_status
+                    except Exception as e:
+                        return f"❌ Error: {str(e)}", "🔴 Error"
+
+                def clear_chromadb_vs_config():
+                    """Clear ChromaDB configuration."""
+                    os.environ.pop("CHROMADB_PERSIST_DIR", None)
+                    os.environ.pop("CHROMADB_HOST", None)
+                    os.environ.pop("CHROMADB_PORT", None)
+                    return "Persistent (Local)", "", "", "", "✅ Configuration cleared", "🔴 Not Configured"
+
+                # Wire up vector store config events
+                azure_vs_refresh_btn.click(
+                    fn=refresh_azure_vs_config,
+                    outputs=[azure_vs_service, azure_vs_index, azure_vs_key, azure_vs_config_status, azure_vs_connection]
+                )
+
+                azure_vs_save_btn.click(
+                    fn=save_azure_vs_config,
+                    inputs=[azure_vs_service, azure_vs_index, azure_vs_key],
+                    outputs=[azure_vs_config_status, azure_vs_connection]
+                )
+
+                azure_vs_clear_btn.click(
+                    fn=clear_azure_vs_config,
+                    outputs=[azure_vs_service, azure_vs_index, azure_vs_key, azure_vs_config_status, azure_vs_connection]
+                )
+
+                chromadb_vs_refresh_btn.click(
+                    fn=refresh_chromadb_vs_config,
+                    outputs=[chromadb_vs_mode, chromadb_vs_persist_dir, chromadb_vs_host, chromadb_vs_port, chromadb_vs_config_status, chromadb_vs_connection]
+                )
+
+                chromadb_vs_save_btn.click(
+                    fn=save_chromadb_vs_config,
+                    inputs=[chromadb_vs_mode, chromadb_vs_persist_dir, chromadb_vs_host, chromadb_vs_port],
+                    outputs=[chromadb_vs_config_status, chromadb_vs_connection]
+                )
+
+                chromadb_vs_clear_btn.click(
+                    fn=clear_chromadb_vs_config,
+                    outputs=[chromadb_vs_mode, chromadb_vs_persist_dir, chromadb_vs_host, chromadb_vs_port, chromadb_vs_config_status, chromadb_vs_connection]
+                )
+
+                # Tab selection handlers to track active vector store
+                azure_vector_tab.select(
+                    fn=lambda: "azure",
+                    outputs=[active_vector_store]
+                )
+
+                chromadb_vector_tab.select(
+                    fn=lambda: "chromadb",
+                    outputs=[active_vector_store]
+                )
+
                 # Event handlers - Enhanced UI connections
                 test_connection_btn.click(
                     fn=test_connection,
+                    inputs=[active_vector_store],
                     outputs=[connection_status, connection_indicator, index_info_display]
                 )
 
                 search_btn.click(
                     fn=search_documents,
-                    inputs=[filename_pattern],
+                    inputs=[filename_pattern, active_vector_store],
                     outputs=[document_list, connection_status, search_results_info, total_docs_display, total_chunks_display]
                 )
 
@@ -3124,7 +3585,7 @@ def create_ui():
 
                 document_list.select(
                     fn=select_document,
-                    inputs=[document_list],
+                    inputs=[document_list, active_vector_store],
                     outputs=[
                         chunk_review_section,
                         selected_doc_name,
