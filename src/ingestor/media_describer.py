@@ -32,23 +32,47 @@ class GPT4oMediaDescriber(MediaDescriber):
     """Media describer using Azure OpenAI GPT-4o vision."""
 
     def __init__(self, config: AzureOpenAIConfig):
+        """Initialize GPT-4o vision media describer.
+
+        Args:
+            config: Azure OpenAI configuration with vision deployment
+
+        Raises:
+            ValueError: If vision deployment is not configured
+        """
         self.config = config
 
+        # Safety check (should already be validated by factory)
         if not config.vision_deployment:
             raise ValueError(
                 "vision_deployment is required for GPT-4o media describer.\n"
                 "Set AZURE_OPENAI_VISION_DEPLOYMENT in your .env file."
             )
 
+        if not config.endpoint:
+            raise ValueError(
+                "Azure OpenAI endpoint is required.\n"
+                "Set AZURE_OPENAI_ENDPOINT in your .env file."
+            )
+
+        if not config.api_key:
+            raise ValueError(
+                "Azure OpenAI API key is required.\n"
+                "Set AZURE_OPENAI_KEY in your .env file."
+            )
+
         # Create Azure OpenAI client
         # Use vision-specific API version if set, otherwise fall back to general API version
         api_version = config.vision_api_version or config.api_version
+        logger.info(f"Initializing GPT-4o vision client: {config.endpoint} (API version: {api_version})")
+
         self.client = AsyncAzureOpenAI(
             api_key=config.api_key,
             azure_endpoint=config.endpoint,
             api_version=api_version
         )
         self.deployment = config.vision_deployment
+        logger.info(f"GPT-4o media describer ready: deployment={self.deployment}")
     
     async def describe_image(self, image_bytes: bytes) -> Optional[str]:
         """Generate description AND extract text from image using GPT-4o vision.
@@ -166,17 +190,100 @@ def create_media_describer(
     aoai_config: Optional[AzureOpenAIConfig] = None,
     cu_config: Optional[ContentUnderstandingConfig] = None
 ) -> MediaDescriber:
-    """Factory function to create media describer from configuration."""
-    if mode == MediaDescriberMode.GPT4O:
-        if not aoai_config:
-            raise ValueError("Azure OpenAI config is required for GPT-4o describer")
-        return GPT4oMediaDescriber(aoai_config)
-    elif mode == MediaDescriberMode.CONTENT_UNDERSTANDING:
-        if not cu_config:
-            raise ValueError("Content Understanding config is required for CU describer")
-        return ContentUnderstandingDescriber(cu_config)
-    elif mode == MediaDescriberMode.DISABLED:
+    """Factory function to create media describer from configuration.
+
+    Args:
+        mode: Media describer mode (disabled, gpt4o, content_understanding)
+        aoai_config: Azure OpenAI configuration (required for gpt4o mode)
+        cu_config: Content Understanding configuration (required for content_understanding mode)
+
+    Returns:
+        MediaDescriber instance
+
+    Raises:
+        ValueError: If required configuration is missing for the selected mode
+    """
+    if mode == MediaDescriberMode.DISABLED:
+        logger.info("Media description disabled - images will be extracted but not described")
         return DisabledMediaDescriber()
+
+    elif mode == MediaDescriberMode.GPT4O:
+        # Validate Azure OpenAI configuration
+        if not aoai_config:
+            raise ValueError(
+                "Media describer configuration error:\n"
+                "  MEDIA_DESCRIBER_MODE=gpt4o requires Azure OpenAI configuration.\n"
+                "  \n"
+                "  Missing: Azure OpenAI config\n"
+                "  \n"
+                "  Required environment variables:\n"
+                "    AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/\n"
+                "    AZURE_OPENAI_KEY=your-key\n"
+                "    AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o\n"
+                "    AZURE_OPENAI_VISION_MODEL=gpt-4o\n"
+                "  \n"
+                "  Or disable media description:\n"
+                "    MEDIA_DESCRIBER_MODE=disabled\n"
+                "  \n"
+                "  See: envs/.env.azure-local-input.example"
+            )
+
+        if not aoai_config.vision_deployment:
+            raise ValueError(
+                "Media describer configuration error:\n"
+                "  MEDIA_DESCRIBER_MODE=gpt4o requires vision deployment configuration.\n"
+                "  \n"
+                "  Missing: AZURE_OPENAI_VISION_DEPLOYMENT\n"
+                "  \n"
+                "  Add to your .env file:\n"
+                "    AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o\n"
+                "    AZURE_OPENAI_VISION_MODEL=gpt-4o\n"
+                "  \n"
+                "  Recommended: Use gpt-4o-mini for 5x lower cost:\n"
+                "    AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o-mini\n"
+                "    AZURE_OPENAI_VISION_MODEL=gpt-4o-mini\n"
+                "  \n"
+                "  Or disable media description:\n"
+                "    MEDIA_DESCRIBER_MODE=disabled\n"
+                "  \n"
+                "  See: envs/.env.azure-local-input.example"
+            )
+
+        logger.info(f"Media description enabled: GPT-4o Vision ({aoai_config.vision_deployment})")
+        return GPT4oMediaDescriber(aoai_config)
+
+    elif mode == MediaDescriberMode.CONTENT_UNDERSTANDING:
+        # Validate Content Understanding configuration
+        if not cu_config or not cu_config.endpoint:
+            raise ValueError(
+                "Media describer configuration error:\n"
+                "  MEDIA_DESCRIBER_MODE=content_understanding requires Content Understanding configuration.\n"
+                "  \n"
+                "  Missing: AZURE_CONTENT_UNDERSTANDING_ENDPOINT\n"
+                "  \n"
+                "  NOTE: Content Understanding mode is not yet fully implemented.\n"
+                "  \n"
+                "  Alternatives:\n"
+                "    1. Use GPT-4o Vision instead:\n"
+                "       MEDIA_DESCRIBER_MODE=gpt4o\n"
+                "       AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o\n"
+                "  \n"
+                "    2. Disable media description:\n"
+                "       MEDIA_DESCRIBER_MODE=disabled\n"
+                "  \n"
+                "  See: envs/.env.azure-local-input.example"
+            )
+
+        logger.warning(
+            "Content Understanding mode selected but not yet fully implemented. "
+            "Consider using MEDIA_DESCRIBER_MODE=gpt4o instead."
+        )
+        return ContentUnderstandingDescriber(cu_config)
+
     else:
-        raise ValueError(f"Unsupported media describer mode: {mode}")
+        raise ValueError(
+            f"Unsupported media describer mode: {mode}\n"
+            f"Valid options: disabled | gpt4o | content_understanding\n"
+            f"Set MEDIA_DESCRIBER_MODE in your .env file."
+        )
 

@@ -291,8 +291,14 @@ class _ChunkBuilder:
         return True
     
     def force_append(self, text: str):
-        """Append text even if it overflows (for figures)."""
+        """Append text even if it overflows (for figures).
+
+        Note: Also updates token_len for accurate tracking.
+        """
         self.parts.append(text)
+        # Update token count for accurate tracking
+        text_tokens = len(bpe.encode(text))
+        self.token_len += text_tokens
     
     def flush_into(self, out: list[TextChunk], page_header: Optional[str] = None):
         """Flush accumulated content as a chunk."""
@@ -365,10 +371,10 @@ class LayoutAwareChunker:
         self.sentence_search_limit = 100
         self.embedding_max_tokens = embedding_max_tokens
 
-        # Log initial configuration
+        # Log initial configuration (before adjustment)
         get_logger(__name__).info("Chunker initialized:")
-        get_logger(__name__).info(f"  Target chunk size: {self.max_tokens_per_section} tokens (CHUNKING_MAX_TOKENS)")
-        get_logger(__name__).info(f"  Hard maximum: {self.max_section_length_tokens} tokens (with overlap allowance)")
+        get_logger(__name__).info(f"  Initial target: {self.max_tokens_per_section} tokens (CHUNKING_MAX_TOKENS)")
+        get_logger(__name__).info(f"  Initial hard max: {self.max_section_length_tokens} tokens")
         get_logger(__name__).info(f"  Overlap: {overlap_percent}%")
 
         # Apply dynamic limit adjustment if embedding model has tighter constraints
@@ -378,30 +384,61 @@ class LayoutAwareChunker:
             # Calculate safe limit considering:
             # 1. Overlap can add up to overlap_percent% more tokens
             # 2. Orphan merging can increase chunk size
-            # 3. Keep 15% buffer for safety
-            overlap_buffer = 1 + (overlap_percent / 100)  # e.g., 1.10 for 10% overlap
-            safety_buffer = 0.85  # Use only 85% of limit, leaving 15% buffer
+            # 3. Keep 5% buffer for safety (reduced from 15% per user request)
+            overlap_buffer = 1 + (overlap_percent / 100)  # e.g., 1.20 for 20% overlap
+            safety_buffer = 0.95  # Use 95% of limit, leaving 5% buffer
             safe_embedding_limit = int(embedding_max_tokens * safety_buffer / overlap_buffer)
 
+            # Ideal target chunk size range: 500-700 tokens
+            IDEAL_MIN_CHUNK_SIZE = 500
+            IDEAL_MAX_CHUNK_SIZE = 700
+
+            # Dynamically adjust based on model capacity
+            if safe_embedding_limit < IDEAL_MIN_CHUNK_SIZE:
+                # Model too small for ideal range - use what it can handle
+                get_logger(__name__).warning(
+                    f"⚠️  Embedding model limit ({embedding_max_tokens} tokens) too small for ideal range ({IDEAL_MIN_CHUNK_SIZE}-{IDEAL_MAX_CHUNK_SIZE}). "
+                    f"Dynamically adjusting to {safe_embedding_limit} tokens to prevent truncation."
+                )
+                target_chunk_size = safe_embedding_limit
+            elif safe_embedding_limit > IDEAL_MAX_CHUNK_SIZE:
+                # Model can handle more than ideal max - cap at 700 for optimal retrieval
+                get_logger(__name__).info(
+                    f"✓ Using ideal maximum chunk size: {IDEAL_MAX_CHUNK_SIZE} tokens "
+                    f"(model can handle up to {safe_embedding_limit} tokens, capping for optimal retrieval)"
+                )
+                target_chunk_size = IDEAL_MAX_CHUNK_SIZE
+            else:
+                # Model can handle ideal range - use minimum of range (500)
+                get_logger(__name__).info(
+                    f"✓ Using ideal chunk size: {IDEAL_MIN_CHUNK_SIZE} tokens "
+                    f"(model can handle up to {safe_embedding_limit} tokens)"
+                )
+                target_chunk_size = IDEAL_MIN_CHUNK_SIZE
+
             # Adjust chunking limits to respect embedding model
-            if safe_embedding_limit < self.max_section_length_tokens:
+            if target_chunk_size < self.max_section_length_tokens:
                 get_logger(__name__).warning(
                     f"⚠️  Embedding model max_seq_length ({embedding_max_tokens}) is smaller than "
                     f"configured max ({self.max_section_length_tokens}). "
-                    f"Automatically reducing to {safe_embedding_limit} tokens "
+                    f"Automatically reducing to {target_chunk_size} tokens "
                     f"(with {int((1-safety_buffer)*100)}% buffer and {overlap_percent}% overlap allowance)."
                 )
-                self.max_section_length_tokens = safe_embedding_limit
+                self.max_section_length_tokens = target_chunk_size
 
-            if safe_embedding_limit < self.max_tokens_per_section:
+            if target_chunk_size < self.max_tokens_per_section:
                 get_logger(__name__).warning(
                     f"⚠️  Adjusting target chunk size from {self.max_tokens_per_section} "
-                    f"to {safe_embedding_limit} tokens to fit embedding model "
+                    f"to {target_chunk_size} tokens to fit embedding model "
                     f"(with buffers for overlap and safety)."
                 )
-                self.max_tokens_per_section = safe_embedding_limit
+                self.max_tokens_per_section = target_chunk_size
             else:
                 get_logger(__name__).info(f"  ✓ Configuration is compatible with embedding model (no adjustment needed)")
+
+            # Log final adjusted limits
+            get_logger(__name__).info(f"  FINAL target chunk size: {self.max_tokens_per_section} tokens")
+            get_logger(__name__).info(f"  FINAL hard maximum: {self.max_section_length_tokens} tokens")
     
     def chunk_pages(self, pages: list[ExtractedPage]) -> list[TextChunk]:
         """Chunk multiple pages with cross-page merging and overlap.
@@ -493,15 +530,33 @@ class LayoutAwareChunker:
                                         btext = table_ref + "\n\n" + btext
                                         logger.info(f"Moving table reference to table chunk: {table_ref[:60]}...")
 
-                    # Validate table/figure size (safety check)
+                    # Validate table/figure size and split if needed
                     figure_tokens = len(bpe.encode(btext))
-                    if figure_tokens > ABSOLUTE_MAX_TOKENS:
-                        logger.error(
-                            f"Table/figure exceeds ABSOLUTE MAX ({ABSOLUTE_MAX_TOKENS} tokens): "
-                            f"{figure_tokens} tokens on page {page.page_num + 1}. "
-                            f"This will cause embedding failures! Consider splitting the table."
+
+                    # Determine the effective limit for atomic content
+                    effective_limit = ABSOLUTE_MAX_TOKENS
+                    if self.embedding_max_tokens:
+                        # Use embedding model limit with 10% buffer for safety
+                        effective_limit = min(
+                            ABSOLUTE_MAX_TOKENS,
+                            int(self.embedding_max_tokens * 0.9)
                         )
-                        # Still emit it but log error - user needs to fix source document
+
+                    if figure_tokens > effective_limit:
+                        logger.warning(
+                            f"Table/figure ({figure_tokens} tokens) exceeds embedding model limit "
+                            f"({effective_limit} tokens). Splitting into multiple chunks to prevent "
+                            f"truncation/OOM. Page {page.page_num + 1}."
+                        )
+                        # Flush current builder
+                        builder.flush_into(page_chunks, page_header)
+
+                        # Split the oversized table/figure into chunks
+                        for chunk in self._split_by_max_tokens(page.page_num, btext, page_header):
+                            page_chunks.append(chunk)
+
+                        previous_was_figure = True
+                        continue
 
                     # Add figure to builder
                     builder.force_append(btext)
@@ -556,13 +611,24 @@ class LayoutAwareChunker:
                 for span_idx, span in enumerate(spans):
                     span_tokens = len(bpe.encode(span))
 
-                    # DEBUG: Log all spans
+                    # DEBUG: Log all spans, especially large ones
                     span_preview = span[:60].replace('\n', ' ')
-                    if span_idx % 20 == 0 or any(phrase in span for phrase in ["remains", "Attention mechanisms", "In this work", "## 2 Background", "reducing sequential"]):
-                        logger.info(f"🔍 SPAN {span_idx}/{len(spans)}: {span_tokens} tokens, builder={builder.token_len} | {span_preview}")
+                    if span_tokens > 1000 or span_idx % 20 == 0 or any(phrase in span for phrase in ["remains", "Attention mechanisms", "In this work", "## 2 Background", "reducing sequential"]):
+                        logger.info(f"🔍 SPAN {span_idx}/{len(spans)}: {span_tokens} tokens (limit={self.max_tokens_per_section}), builder={builder.token_len} | {span_preview}")
 
                     # If single span exceeds token limit, split it recursively
+                    # DEBUG: Always log the comparison for large spans
+                    if span_tokens > 1000:
+                        logger.warning(
+                            f"🔍 DEBUG: Large span {span_tokens} tokens vs limit {self.max_tokens_per_section} "
+                            f"(will_split={span_tokens > self.max_tokens_per_section})"
+                        )
+
                     if span_tokens > self.max_tokens_per_section:
+                        logger.warning(
+                            f"⚠️  OVERSIZED SPAN DETECTED: {span_tokens} tokens > {self.max_tokens_per_section} limit "
+                            f"on page {page.page_num + 1}. Will split recursively. Preview: {span_preview}"
+                        )
                         spans_recursive_split += 1
                         # Before flushing, check if we've reached minimum
                         # Only flush if we have decent content or the span is really large
@@ -754,16 +820,30 @@ class LayoutAwareChunker:
         # Tables are already rendered from extractor - no processing needed
         
         # Replace figure placeholders with <figure> tags
+        logger = get_logger(__name__)
         for image in page.images:
+            caption_parts = [image.figure_id]
+            if image.title:
+                caption_parts.append(image.title)
+            caption = " ".join(caption_parts)
+
+            # Build figure markup (include description if available)
             if image.description:
-                caption_parts = [image.figure_id]
-                if image.title:
-                    caption_parts.append(image.title)
-                caption = " ".join(caption_parts)
-                # Use <figure> tags (matches original prepdocslib)
                 figure_markup = f"<figure id=\"{image.figure_id}\">\nFigure: {caption}\nDescription: {image.description}\n</figure>"
+            else:
+                # No description available - render without it
+                logger.warning(f"Figure {image.figure_id} on page {page.page_num + 1} has no description")
+                figure_markup = f"<figure id=\"{image.figure_id}\">\nFigure: {caption}\n</figure>"
+
+            # Replace placeholder
+            if image.placeholder in text:
                 text = text.replace(image.placeholder, figure_markup)
-        
+            else:
+                logger.warning(
+                    f"Figure placeholder '{image.placeholder}' not found in page {page.page_num + 1} text. "
+                    f"Figure description will not be included in chunks."
+                )
+
         return text
     
     def _split_into_spans(self, text: str) -> list[str]:
@@ -809,7 +889,7 @@ class LayoutAwareChunker:
     
     def _find_split_pos(self, text: str) -> tuple[int, bool]:
         """Find split position for oversized span.
-        
+
         Returns: (position, use_overlap)
         - use_overlap=False: natural boundary found
         - use_overlap=True: no boundary, use midpoint + overlap
@@ -817,29 +897,46 @@ class LayoutAwareChunker:
         length = len(text)
         mid = length // 2
         window_limit = mid  # Search entire half
-        
+
+        # Define minimum distances from edges to prevent invalid splits
+        # Ensure we don't split too close to start (need at least 10% of text in first_half)
+        # or too close to end (need at least 10% of text in second_half)
+        min_edge_distance = int(length * 0.1)
+
         # 1. Sentence endings
         pos = 0
         while mid - pos > 0 or mid + pos < length:
             left = mid - pos
             right = mid + pos
-            if left >= 0 and left < length and text[left] in self.sentence_endings:
+            # Check left position: must be valid AND far enough from edges
+            if (left >= min_edge_distance and
+                left < length - min_edge_distance and
+                text[left] in self.sentence_endings):
                 return left, False
-            if right < length and text[right] in self.sentence_endings:
+            # Check right position: must be valid AND far enough from edges
+            if (right >= min_edge_distance and
+                right < length - min_edge_distance and
+                text[right] in self.sentence_endings):
                 return right, False
             pos += 1
-        
+
         # 2. Word breaks
         pos = 0
         while mid - pos > 0 or mid + pos < length:
             left = mid - pos
             right = mid + pos
-            if left >= 0 and left < length and text[left] in self.word_breaks:
+            # Check left position: must be valid AND far enough from edges
+            if (left >= min_edge_distance and
+                left < length - min_edge_distance and
+                text[left] in self.word_breaks):
                 return left, False
-            if right < length and text[right] in self.word_breaks:
+            # Check right position: must be valid AND far enough from edges
+            if (right >= min_edge_distance and
+                right < length - min_edge_distance and
+                text[right] in self.word_breaks):
                 return right, False
             pos += 1
-        
+
         # 3. Fallback - no boundary found
         return -1, True
     
@@ -850,6 +947,9 @@ class LayoutAwareChunker:
         1. Sentence-ending punctuation near midpoint
         2. Word-break character near midpoint
         3. Midpoint split with symmetric overlap
+
+        Note: self.max_tokens_per_section is already adjusted based on embedding_max_tokens
+        in __init__, so this method automatically respects the embedding model's limit.
         """
         tokens = bpe.encode(text)
         if len(tokens) <= self.max_tokens_per_section:
@@ -897,8 +997,25 @@ class LayoutAwareChunker:
                             best_split = pos
                             break
 
-            first_half = text[:best_split + overlap]
-            second_half = text[max(0, best_split - overlap):]
+            # Ensure split makes progress - both halves must have content
+            # Maximum first_half can be is 90% of text to guarantee second_half has content
+            max_first_half = int(len(text) * 0.9)
+            first_split_end = min(best_split + overlap, max_first_half)
+
+            # Ensure second_half starts before first_half ends (with overlap)
+            # Minimum second_half start is 10% into text to guarantee first_half has content
+            min_second_half_start = int(len(text) * 0.1)
+            second_split_start = max(min_second_half_start, best_split - overlap)
+
+            # Debug: Log when using forced split for tables without natural boundaries
+            logger.info(
+                f"Splitting at midpoint (no natural boundary found): "
+                f"text={len(text)} chars, first_half={first_split_end} chars, "
+                f"second_half starts at {second_split_start} (overlap={(first_split_end - second_split_start)} chars)"
+            )
+
+            first_half = text[:first_split_end]
+            second_half = text[second_split_start:]
 
         # Safety check: Ensure splits are making progress
         if len(first_half) >= len(text) or len(second_half) >= len(text):
