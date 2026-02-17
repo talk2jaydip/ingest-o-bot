@@ -96,10 +96,6 @@ class Pipeline:
         self.media_describer: Optional[MediaDescriber] = None
         self.chunker: Optional[LayoutAwareChunker] = None
 
-        # Legacy components (still supported for backward compatibility)
-        self.embeddings_gen: Optional[EmbeddingsGenerator] = None
-        self.search_uploader: Optional[SearchUploader] = None
-
         # New pluggable components
         self.embeddings_provider: Optional[EmbeddingsProvider] = None
         self.vector_store: Optional[VectorStore] = None
@@ -435,11 +431,6 @@ class Pipeline:
             except (NotImplementedError, ValueError) as e:
                 logger.warning(f"  Could not get max_seq_length from provider: {e}")
                 embedding_max_seq = None
-
-            # For backward compatibility: Also set embeddings_gen to the same instance if Azure OpenAI
-            if mode == EmbeddingsMode.AZURE_OPENAI and self.embeddings_gen is None:
-                # Extract the underlying generator from the wrapper
-                self.embeddings_gen = self.embeddings_provider._generator
         else:
             embedding_max_seq = None
 
@@ -476,11 +467,6 @@ class Pipeline:
                 config,
                 max_batch_concurrency=self.config.performance.max_batch_upload_concurrency
             )
-
-            # For backward compatibility: Also set search_uploader to the same instance if Azure Search
-            if mode == VectorStoreMode.AZURE_SEARCH and self.search_uploader is None:
-                # Extract the underlying uploader from the wrapper
-                self.search_uploader = self.vector_store._uploader
 
         # Initialize page splitter for per-page PDF citations (ALWAYS for PDFs)
         # Per-page PDFs are stored in blob storage for citation URLs
@@ -696,11 +682,8 @@ class Pipeline:
 
             # Collect deletion tasks
             delete_tasks = []
-            # Use pluggable vector store if available, otherwise use legacy search_uploader
             if self.vector_store:
                 delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
-            elif self.search_uploader:
-                delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
             if self.clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                 delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -925,11 +908,8 @@ class Pipeline:
             try:
                 # Delete chunks and artifacts in parallel
                 delete_tasks = []
-                # Use pluggable vector store if available, otherwise use legacy search_uploader
                 if self.vector_store:
                     delete_tasks.append(self.vector_store.delete_documents_by_filename(filename))
-                elif self.search_uploader:
-                    delete_tasks.append(self.search_uploader.delete_documents_by_filename(filename))
 
                 if clean_artifacts and isinstance(self.artifact_storage, BlobArtifactStorage):
                     delete_tasks.append(self.artifact_storage.delete_document_artifacts(filename))
@@ -978,15 +958,12 @@ class Pipeline:
     
     async def remove_all_documents(self):
         """Remove ALL documents from the search index.
-        
+
         WARNING: This will delete ALL documents in the index!
         """
         logger.warning("Removing ALL documents from search index")
-        # Use pluggable vector store if available, otherwise use legacy search_uploader
         if self.vector_store:
             count = await self.vector_store.delete_all_documents()
-        elif self.search_uploader:
-            count = await self.search_uploader.delete_all_documents()
         else:
             raise RuntimeError("No vector store configured!")
         logger.info(f"Removed {count} documents from index")
@@ -1700,30 +1677,6 @@ class Pipeline:
                 logger.info(f"Successfully generated {len(embeddings)} embeddings (dimension: {embedding_dim})")
             else:
                 logger.warning("No embeddings were generated!")
-
-        # Fallback to legacy embeddings_gen (should not happen with new initialization)
-        elif self.embeddings_gen:
-            logger.info(f"  Model: {self.embeddings_gen.model_name}")
-            logger.info(f"  Deployment: {self.embeddings_gen.deployment}")
-            if self.embeddings_gen.dimensions:
-                logger.info(f"  Dimensions: {self.embeddings_gen.dimensions}")
-
-            # Extract texts
-            texts = [doc.chunk.text for doc in chunk_docs]
-
-            # Generate embeddings in batches
-            embeddings = await self.embeddings_gen.generate_embeddings_batch(texts)
-
-            # Assign embeddings to chunks
-            for chunk_doc, embedding in zip(chunk_docs, embeddings):
-                chunk_doc.chunk.embedding = embedding
-
-            # Verify embeddings were generated
-            if embeddings and len(embeddings) > 0:
-                embedding_dim = len(embeddings[0])
-                logger.info(f"Successfully generated {len(embeddings)} embeddings (dimension: {embedding_dim})")
-            else:
-                logger.warning("No embeddings were generated!")
         else:
             raise RuntimeError("No embeddings provider configured!")
     
@@ -1738,12 +1691,8 @@ class Pipeline:
         # Pass include_embeddings based on configuration
         include_embeddings = not self.config.use_integrated_vectorization
 
-        # Use new pluggable architecture
         if self.vector_store:
             count = await self.vector_store.upload_documents(chunk_docs, include_embeddings=include_embeddings)
-        # Fallback to legacy search_uploader (should not happen with new initialization)
-        elif self.search_uploader:
-            count = await self.search_uploader.upload_documents(chunk_docs, include_embeddings=include_embeddings)
         else:
             raise RuntimeError("No vector store configured!")
 
@@ -1752,17 +1701,10 @@ class Pipeline:
     
     async def close(self):
         """Close all async resources."""
-        # Close new pluggable components
         if self.embeddings_provider:
             await self.embeddings_provider.close()
         if self.vector_store:
             await self.vector_store.close()
-
-        # Close legacy components (for backward compatibility)
-        if self.embeddings_gen:
-            await self.embeddings_gen.close()
-        if self.search_uploader:
-            await self.search_uploader.close()
         if self.media_describer and hasattr(self.media_describer, 'close'):
             await self.media_describer.close()
         if self.artifact_storage and hasattr(self.artifact_storage, 'close'):
