@@ -1,0 +1,93 @@
+usage: cli.py [-h] [--env PATH] [--pdf PATH] [--glob PATTERN]
+              [--action {add,remove,removeall}] [--setup-index]
+              [--force-index] [--index-only] [--delete-index]
+              [--skip-ingestion] [--verbose] [--no-colors] [--check-index]
+              [--export-schema OUTPUT_FILE] [--import-schema JSON_FILE]
+              [--clean-artifacts] [--clean-all-artifacts] [--validate]
+
+Document ingestion pipeline for Azure AI Search
+
+options:
+  -h, --help            show this help message and exit
+  --env PATH, --env-file PATH
+                        Path to environment file (default: .env). Use this to
+                        test different configurations, e.g., --env
+                        .env.offline
+  --pdf PATH, --file PATH
+                        Path to file to process (overrides LOCAL_INPUT_GLOB)
+  --glob PATTERN        Glob pattern for local files (overrides
+                        LOCAL_INPUT_GLOB), e.g., 'documents/*.pdf'
+  --action {add,remove,removeall}
+                        Document action: add (default), remove (by filename),
+                        removeall (WARNING: removes ALL documents)
+  --setup-index         Deploy/update the Azure AI Search index before
+                        ingestion
+  --force-index         Force delete and recreate index, then EXIT (WARNING:
+                        destroys all data in index)
+  --index-only          Only deploy/update index, skip document ingestion
+                        pipeline
+  --delete-index        Delete the index only (WARNING: destroys all data in
+                        index)
+  --skip-ingestion      Skip document ingestion pipeline (useful with --setup-
+                        index or --delete-index)
+  --verbose             Enable verbose/debug logging
+  --no-colors           Disable colorful console output (useful for CI/CD or
+                        log files)
+  --check-index         Check if index exists, then exit (no ingestion)
+  --export-schema OUTPUT_FILE
+                        Export current index schema to JSON file (e.g.,
+                        schema.json)
+  --import-schema JSON_FILE
+                        Create index from JSON schema file (e.g.,
+                        original_index.json)
+  --clean-artifacts     Clean blob artifacts for specified files (use with
+                        --glob or --action remove)
+  --clean-all-artifacts
+                        Clean ALL blob artifacts (WARNING: destructive!)
+  --validate, --pre-check
+                        Run pre-check validation on configuration and
+                        environment, then exit (no document processing)
+
+Examples:
+  # Validate configuration and environment (pre-check)
+  python -m ingestor.cli --validate
+
+  # Use a specific environment file (e.g., offline mode with ChromaDB + Hugging Face)
+  python -m ingestor.cli --env .env.offline --glob "data/*.pdf"
+
+  # Deploy/update index ONLY (no ingestion)
+  python -m ingestor.cli --index-only
+
+  # Delete index ONLY (no ingestion)
+  python -m ingestor.cli --delete-index
+
+  # Force recreate index ONLY (delete + create, no ingestion)
+  python -m ingestor.cli --force-index
+
+  # Export current index schema to JSON file
+  python -m ingestor.cli --export-schema schema_backup.json
+
+  # Create index from JSON schema file
+  python -m ingestor.cli --import-schema original_index.json
+
+  # Deploy index and then ingest documents
+  python -m ingestor.cli --setup-index --glob "documents/*.pdf"
+
+  # Ingest documents ONLY (no index operations)
+  python -m ingestor.cli --glob "documents/*.pdf"
+
+  # Process a single PDF file
+  python -m ingestor.cli --pdf "my_document.pdf"
+
+  # Process all supported file types
+  python -m ingestor.cli --glob "documents/**/*"
+
+  # Remove specific documents from index
+  python -m ingestor.cli --action remove --glob "my_document.pdf"
+
+  # Remove ALL documents from index (WARNING!)
+  python -m ingestor.cli --action removeall
+
+  # Verbose logging
+  python -m ingestor.cli --verbose --glob "documents/*.pdf"
+        

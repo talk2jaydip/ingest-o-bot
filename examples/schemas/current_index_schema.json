@@ -1,0 +1,365 @@
+{
+  "name": "alfred-experiment-index-2",
+  "fields": [
+    {
+      "name": "id",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": false,
+      "key": true
+    },
+    {
+      "name": "content",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": false,
+      "sortable": false,
+      "facetable": false,
+      "key": false,
+      "analyzer": "en.microsoft"
+    },
+    {
+      "name": "embeddings",
+      "type": "Collection(Edm.Single)",
+      "searchable": true,
+      "filterable": false,
+      "sortable": false,
+      "facetable": false,
+      "key": false,
+      "vectorSearchDimensions": 1536,
+      "vectorSearchProfileName": "vector-profile-optimized"
+    },
+    {
+      "name": "filename",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "url",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false
+    },
+    {
+      "name": "country",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "language",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "product_family",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "en.microsoft"
+    },
+    {
+      "name": "productTradeNames",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "standard.lucene"
+    },
+    {
+      "name": "prod_from_url",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "title",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false,
+      "analyzer": "standard.lucene"
+    },
+    {
+      "name": "literatureType",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "partNumber",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "applicableTo",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "en.microsoft"
+    },
+    {
+      "name": "model",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "publishedDate",
+      "type": "Edm.DateTimeOffset",
+      "searchable": false,
+      "filterable": true,
+      "sortable": true,
+      "facetable": true,
+      "key": false
+    },
+    {
+      "name": "pageNumber",
+      "type": "Edm.Int32",
+      "searchable": false,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false
+    },
+    {
+      "name": "category",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": true,
+      "key": false,
+      "analyzer": "en.microsoft"
+    },
+    {
+      "name": "sourcepage",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "sourcefile",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false,
+      "key": false,
+      "analyzer": "keyword"
+    },
+    {
+      "name": "storageUrl",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": false,
+      "sortable": false,
+      "facetable": false,
+      "key": false
+    },
+    {
+      "name": "has_figures",
+      "type": "Edm.Boolean",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false
+    },
+    {
+      "name": "figure_urls",
+      "type": "Collection(Edm.String)",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false
+    },
+    {
+      "name": "has_tables",
+      "type": "Edm.Boolean",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true,
+      "key": false
+    }
+  ],
+  "scoringProfiles": [
+    {
+      "name": "productBoostingProfile",
+      "functionAggregation": "sum",
+      "text": {
+        "weights": {
+          "title": 3.0,
+          "productTradeNames": 2.5,
+          "product_family": 2.0,
+          "partNumber": 2.5,
+          "model": 2.0,
+          "content": 1.0,
+          "filename": 1.5,
+          "applicableTo": 1.8
+        }
+      },
+      "functions": [
+        {
+          "type": "FreshnessScoringFunction",
+          "fieldName": "publishedDate",
+          "boost": 2.0,
+          "interpolation": "linear",
+          "boostingDuration": "PT31536000S"
+        }
+      ]
+    },
+    {
+      "name": "contentRAGProfile",
+      "functionAggregation": "sum",
+      "text": {
+        "weights": {
+          "content": 3.0,
+          "title": 2.5,
+          "applicableTo": 2.0,
+          "productTradeNames": 1.5,
+          "product_family": 1.5,
+          "category": 1.2,
+          "filename": 1.0
+        }
+      },
+      "functions": [
+        {
+          "type": "FreshnessScoringFunction",
+          "fieldName": "publishedDate",
+          "boost": 1.5,
+          "interpolation": "linear",
+          "boostingDuration": "PT31536000S"
+        }
+      ]
+    }
+  ],
+  "suggesters": [
+    {
+      "name": "default-suggester",
+      "sourceFields": [
+        "title",
+        "product_family"
+      ]
+    }
+  ],
+  "semantic": {
+    "configurations": [
+      {
+        "name": "default-semantic-config",
+        "prioritizedFields": {
+          "titleField": {
+            "fieldName": "title"
+          },
+          "contentFields": [
+            {
+              "fieldName": "content"
+            },
+            {
+              "fieldName": "applicableTo"
+            }
+          ],
+          "keywordsFields": [
+            {
+              "fieldName": "productTradeNames"
+            },
+            {
+              "fieldName": "product_family"
+            },
+            {
+              "fieldName": "partNumber"
+            },
+            {
+              "fieldName": "model"
+            },
+            {
+              "fieldName": "category"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "vectorSearch": {
+    "profiles": [
+      {
+        "name": "vector-profile-optimized",
+        "algorithmConfigurationName": "vector-config-optimized",
+        "compressionName": "scalar-quantization",
+        "vectorizerName": "vectorizer-alfred-experiment-index-2"
+      }
+    ],
+    "algorithms": [
+      {
+        "name": "vector-config-optimized",
+        "kind": "HnswAlgorithmConfiguration",
+        "parameters": {
+          "m": 16,
+          "efConstruction": 400,
+          "efSearch": 500,
+          "metric": "cosine"
+        }
+      }
+    ],
+    "compressions": [
+      {
+        "name": "scalar-quantization",
+        "kind": "ScalarQuantizationCompression",
+        "rerankWithOriginalVectors": null,
+        "defaultOversampling": null
+      }
+    ]
+  }
+}
