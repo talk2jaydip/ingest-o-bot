@@ -117,6 +117,8 @@ def create_vector_store(
 ) -> VectorStore:
     """Factory function for creating vector store instances.
 
+    Supports both built-in and plugin vector stores.
+
     Args:
         mode: VectorStoreMode enum value indicating which implementation to use
         config: Configuration object for the specific vector store
@@ -140,7 +142,9 @@ def create_vector_store(
     """
     # Import here to avoid circular dependencies
     from .config import VectorStoreMode
+    from .plugin_registry import get_vector_store_class, list_vector_stores
 
+    # Try built-in implementations first
     if mode == VectorStoreMode.AZURE_SEARCH:
         from .vector_stores.azure_search_vector_store import AzureSearchVectorStore
         return AzureSearchVectorStore(config, **kwargs)
@@ -157,7 +161,13 @@ def create_vector_store(
         )
 
     else:
-        raise ValueError(
-            f"Unsupported vector store mode: {mode}. "
-            f"Supported modes: {[m.value for m in VectorStoreMode]}"
-        )
+        # Try plugin registry
+        try:
+            plugin_class = get_vector_store_class(mode.value)
+            return plugin_class(config, **kwargs)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported vector store mode: {mode}. "
+                f"Built-in: [AZURE_SEARCH, CHROMADB]. "
+                f"Plugins: {list_vector_stores()}"
+            )

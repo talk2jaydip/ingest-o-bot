@@ -200,7 +200,14 @@ def create_embeddings_provider(
         )
 
     else:
-        raise ValueError(
-            f"Unsupported embeddings mode: {mode}. "
-            f"Supported modes: {[m.value for m in EmbeddingsMode]}"
-        )
+        # Try plugin registry
+        from .plugin_registry import get_embeddings_provider_class, list_embeddings_providers
+        try:
+            plugin_class = get_embeddings_provider_class(mode.value)
+            return plugin_class(config, **kwargs)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported embeddings mode: {mode}. "
+                f"Built-in: {[m.value for m in EmbeddingsMode]}. "
+                f"Plugins: {list_embeddings_providers()}"
+            )

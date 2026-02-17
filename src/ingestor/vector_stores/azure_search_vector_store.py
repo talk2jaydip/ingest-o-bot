@@ -63,10 +63,8 @@ class AzureSearchVectorStore(VectorStore):
         Returns:
             Number of documents deleted
         """
-        # Delegate to existing SearchUploader
-        await self._uploader.delete_documents_by_filename(filename)
-        # SearchUploader doesn't return count, return 0
-        return 0
+        # Delegate to SearchUploader and return actual delete count
+        return await self._uploader.delete_documents_by_filename(filename)
 
     async def delete_all_documents(self) -> int:
         """Delete all documents from Azure AI Search index.
@@ -74,10 +72,8 @@ class AzureSearchVectorStore(VectorStore):
         Returns:
             Number of documents deleted
         """
-        # Delegate to existing SearchUploader
-        await self._uploader.delete_all_documents()
-        # SearchUploader doesn't return count, return 0
-        return 0
+        # Delegate to SearchUploader and return actual delete count
+        return await self._uploader.delete_all_documents()
 
     async def search(
         self,
@@ -113,9 +109,6 @@ class AzureSearchVectorStore(VectorStore):
         return self._dimensions
 
     async def close(self):
-        """Close Azure Search client connections.
-
-        Note: SearchUploader manages its own client lifecycle.
-        """
-        # SearchUploader doesn't have explicit cleanup
-        pass
+        """Close Azure Search client connections."""
+        # Delegate to SearchUploader for proper cleanup
+        await self._uploader.close()
