@@ -38,20 +38,32 @@ AZURE_SEARCH_KEY=your-admin-key
 EMBEDDINGS_MODE=azure_openai
 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
 AZURE_OPENAI_KEY=your-key
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
 AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
+AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536
+AZURE_OPENAI_MAX_CONCURRENCY=5
+AZURE_OPENAI_MAX_RETRIES=3
 
-# Optional: Use integrated vectorization (server-side embeddings)
-AZURE_USE_INTEGRATED_VECTORIZATION=true
+# Optional: Vision for image descriptions
+AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_VISION_MODEL=gpt-4o
+MEDIA_DESCRIBER_MODE=gpt4o
 
-# Input/Output
-INPUT_MODE=blob
+# Document Extraction
+EXTRACTION_MODE=azure_di  # or: hybrid, markitdown
+AZURE_DOC_INT_ENDPOINT=https://your-di.cognitiveservices.azure.com/
+AZURE_DOC_INT_KEY=your-key
+AZURE_DI_MAX_CONCURRENCY=5
+
+# Input/Output (supports both new and legacy names)
+INPUT_MODE=blob  # or: AZURE_INPUT_MODE
 AZURE_STORAGE_ACCOUNT=yourstorage
-AZURE_STORAGE_KEY=your-key
-AZURE_STORAGE_CONTAINER=documents
+AZURE_STORAGE_ACCOUNT_KEY=your-key
+AZURE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
+AZURE_BLOB_CONTAINER_PREFIX=production
 
-ARTIFACTS_MODE=blob
-AZURE_ARTIFACTS_CONTAINER=artifacts
+ARTIFACTS_MODE=blob  # or: AZURE_ARTIFACTS_MODE
 ```
 
 ### Cost Estimate
@@ -664,6 +676,166 @@ This makes it easy to:
 - Compare embedding providers side-by-side
 - Switch between cloud and offline modes
 - Validate configurations before deployment
+
+---
+
+## Plugin System
+
+### Creating Custom Vector Store Plugin
+
+Extend Ingestor with custom vector stores:
+
+```python
+from ingestor.plugin_registry import register_vector_store
+from ingestor.vector_store import VectorStore
+from ingestor.config import PipelineConfig
+
+@register_vector_store("my_custom_db")
+class MyCustomVectorStore(VectorStore):
+    """Custom vector store implementation."""
+
+    def __init__(self, config: PipelineConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        # Initialize your custom database
+        self.client = initialize_my_db()
+
+    async def upload_chunks(self, chunks: list) -> dict:
+        """Upload document chunks to your vector store."""
+        # Implement upload logic
+        for chunk in chunks:
+            await self.client.insert(
+                id=chunk['id'],
+                vector=chunk['embedding'],
+                metadata=chunk
+            )
+        return {"uploaded": len(chunks)}
+
+    async def close(self):
+        """Clean up resources."""
+        await self.client.disconnect()
+```
+
+**Configuration:**
+```bash
+VECTOR_STORE_MODE=my_custom_db
+```
+
+### Creating Custom Embeddings Provider Plugin
+
+Extend Ingestor with custom embedding models:
+
+```python
+from ingestor.plugin_registry import register_embeddings_provider
+from ingestor.embeddings_provider import EmbeddingsProvider
+from ingestor.config import PipelineConfig
+
+@register_embeddings_provider("my_custom_embeddings")
+class MyCustomEmbeddings(EmbeddingsProvider):
+    """Custom embeddings implementation."""
+
+    def __init__(self, config: PipelineConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        # Initialize your model
+        self.model = load_my_model()
+
+    async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for input texts."""
+        # Implement embedding generation
+        embeddings = []
+        for text in texts:
+            embedding = await self.model.encode(text)
+            embeddings.append(embedding.tolist())
+        return embeddings
+
+    @property
+    def embedding_dimensions(self) -> int:
+        """Return embedding vector dimensions."""
+        return 768
+
+    @property
+    def max_sequence_length(self) -> int:
+        """Return max input tokens."""
+        return 512
+```
+
+**Configuration:**
+```bash
+EMBEDDINGS_MODE=my_custom_embeddings
+```
+
+### Loading Plugins
+
+Plugins are automatically discovered if placed in the `ingestor/` directory or can be manually registered:
+
+```python
+from ingestor.plugin_registry import discover_plugins
+
+# Auto-discover plugins in specified directory
+discover_plugins("path/to/plugins")
+
+# Or manually import and register
+from my_plugins import MyCustomVectorStore, MyCustomEmbeddings
+# Registration happens via decorators
+```
+
+---
+
+## CLI Validation and Management
+
+### Pre-Check Validation
+
+Validate your configuration before processing:
+
+```bash
+# Run full validation check
+python -m ingestor.cli --validate
+
+# Output:
+# ✅ [Input Source (Local)] Found 12 file(s) matching pattern
+# ✅ [Artifacts Storage (Local)] Directory writable
+# ✅ [Document Intelligence] Client configured
+# ✅ [Azure OpenAI (Embeddings)] Client configured
+# ✅ [Azure AI Search] Index accessible (0 documents)
+# Summary: 5 passed, 0 failed
+```
+
+### Index Management
+
+```bash
+# Check if index exists
+python -m ingestor.cli --check-index
+
+# Deploy/update index only (no ingestion)
+python -m ingestor.cli --index-only
+
+# Setup index and process documents
+python -m ingestor.cli --setup-index --glob "documents/*.pdf"
+
+# Force recreate index (WARNING: destroys data)
+python -m ingestor.cli --force-index
+
+# Delete index
+python -m ingestor.cli --delete-index
+```
+
+### Document Operations
+
+```bash
+# Process with verbose logging
+python -m ingestor.cli --verbose --glob "documents/*.pdf"
+
+# Process without colors (CI/CD)
+python -m ingestor.cli --no-colors --glob "documents/*.pdf"
+
+# Remove specific documents
+python -m ingestor.cli --action remove --glob "old_doc.pdf"
+
+# Remove all documents (WARNING: clears index)
+python -m ingestor.cli --action removeall
+
+# Clean artifacts
+python -m ingestor.cli --clean-artifacts --glob "document.pdf"
+```
 
 ---
 

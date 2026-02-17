@@ -25,7 +25,37 @@
 
 ## 🔌 Pluggable Architecture
 
-Ingestor now supports multiple vector databases and embedding providers through a pluggable architecture. Mix and match components to fit your needs!
+Ingestor supports multiple vector databases and embedding providers through a pluggable architecture. Mix and match components to fit your needs, or create custom plugins!
+
+### Plugin System
+
+Extend Ingestor with custom vector stores and embedding providers:
+
+```python
+from ingestor.plugin_registry import register_vector_store, register_embeddings_provider
+from ingestor.vector_store import VectorStore
+from ingestor.embeddings_provider import EmbeddingsProvider
+
+# Register custom vector store
+@register_vector_store("my_custom_db")
+class MyCustomVectorStore(VectorStore):
+    async def upload_chunks(self, chunks):
+        # Your implementation
+        pass
+
+# Register custom embeddings provider
+@register_embeddings_provider("my_custom_embeddings")
+class MyCustomEmbeddings(EmbeddingsProvider):
+    async def generate_embeddings(self, texts):
+        # Your implementation
+        pass
+```
+
+Then use them in your configuration:
+```bash
+VECTOR_STORE_MODE=my_custom_db
+EMBEDDINGS_MODE=my_custom_embeddings
+```
 
 ### Vector Stores
 
@@ -156,18 +186,34 @@ asyncio.run(main())
 # Copy template
 cp .env.example .env
 
-# Edit with your Azure credentials
+# Edit with your credentials
+# Azure AI Search
 AZURE_SEARCH_SERVICE=your-search-service
 AZURE_SEARCH_KEY=your-key
 AZURE_SEARCH_INDEX=documents-index
-DOCUMENTINTELLIGENCE_ENDPOINT=https://your-di.cognitiveservices.azure.com
-DOCUMENTINTELLIGENCE_KEY=your-di-key
+
+# Azure Document Intelligence
+AZURE_DOC_INT_ENDPOINT=https://your-di.cognitiveservices.azure.com
+AZURE_DOC_INT_KEY=your-di-key
+
+# Azure OpenAI
 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com
 AZURE_OPENAI_KEY=your-openai-key
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+
+# Input Configuration (supports both new and Azure-prefixed names)
+INPUT_MODE=local  # or: AZURE_INPUT_MODE
+LOCAL_INPUT_GLOB=data/**/*.pdf  # or: AZURE_LOCAL_GLOB
+LOCAL_ARTIFACTS_DIR=./artifacts  # or: AZURE_ARTIFACTS_DIR
+
+# Mode Selection
+VECTOR_STORE_MODE=azure_search  # or: chromadb
+EMBEDDINGS_MODE=azure_openai  # or: huggingface, cohere, openai
+EXTRACTION_MODE=azure_di  # or: markitdown, hybrid
 ```
 
-See [.env.example](.env.example) for all available options.
+See [.env.example](.env.example) for all available options and [envs/QUICK_REFERENCE.md](envs/QUICK_REFERENCE.md) for parameter guide.
 
 **Option 2: Programmatic configuration**
 
@@ -245,11 +291,17 @@ The `ingestor` CLI provides quick access to common operations.
 ### Basic Commands
 
 ```bash
+# Validate configuration (pre-check before processing)
+ingestor --validate
+
 # Process documents
 ingestor --glob "documents/*.pdf"
 
 # Setup index and process
 ingestor --setup-index --glob "documents/*.pdf"
+
+# Deploy index only (no ingestion)
+ingestor --index-only
 
 # Process single file
 ingestor --pdf "document.pdf"
@@ -258,11 +310,14 @@ ingestor --pdf "document.pdf"
 ingestor --env envs/.env.chromadb.example --glob "documents/*.pdf"
 ingestor --env envs/.env.cohere.example --glob "documents/*.pdf"
 
+# Check index status
+ingestor --check-index
+
 # Delete index
 ingestor --delete-index
 
-# Check index status
-ingestor --check-index
+# Force recreate index (WARNING: destroys data)
+ingestor --force-index
 ```
 
 Run `ingestor --help` for all options.

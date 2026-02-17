@@ -27,10 +27,10 @@ VECTOR_STORE_MODE=chromadb
 CHROMADB_PERSIST_DIR=./chroma_db
 EMBEDDINGS_MODE=huggingface
 HUGGINGFACE_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
-AZURE_INPUT_MODE=local
-AZURE_LOCAL_GLOB=data/**/*.pdf
-AZURE_OFFICE_EXTRACTOR_MODE=markitdown
-AZURE_MEDIA_DESCRIBER=disabled
+INPUT_MODE=local  # or: AZURE_INPUT_MODE
+LOCAL_INPUT_GLOB=data/**/*.pdf  # or: AZURE_LOCAL_GLOB
+EXTRACTION_MODE=markitdown
+MEDIA_DESCRIBER_MODE=disabled
 ```
 
 ### Pattern 2: Azure + Local Embeddings (Cost-Optimized)
@@ -108,9 +108,15 @@ CHROMADB_COLLECTION_NAME=documents
 EMBEDDINGS_MODE=azure_openai
 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
 AZURE_OPENAI_KEY=your-key
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
 AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
-# Optional: AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536
+AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536  # Optional, for text-embedding-3-*
+# Optional: Vision/GPT-4o for image descriptions
+AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_VISION_MODEL=gpt-4o
+AZURE_OPENAI_MAX_CONCURRENCY=5
+AZURE_OPENAI_MAX_RETRIES=3
 ```
 
 **Hugging Face (CPU):**
@@ -153,6 +159,12 @@ COHERE_TRUNCATE=END
 
 **Local Input + Local Artifacts:**
 ```bash
+# New parameter names (preferred)
+INPUT_MODE=local
+LOCAL_INPUT_GLOB=data/**/*.pdf
+LOCAL_ARTIFACTS_DIR=./artifacts
+
+# Legacy parameter names (still supported for backward compatibility)
 AZURE_INPUT_MODE=local
 AZURE_LOCAL_GLOB=data/**/*.pdf
 AZURE_ARTIFACTS_DIR=./artifacts
@@ -160,19 +172,19 @@ AZURE_ARTIFACTS_DIR=./artifacts
 
 **Blob Input + Blob Artifacts:**
 ```bash
-AZURE_INPUT_MODE=blob
+INPUT_MODE=blob  # or: AZURE_INPUT_MODE
 AZURE_STORAGE_ACCOUNT=your-account
 AZURE_STORAGE_ACCOUNT_KEY=your-key
-AZURE_STORAGE_CONTAINER=documents
-AZURE_ARTIFACTS_MODE=blob
+AZURE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
 AZURE_BLOB_CONTAINER_PREFIX=project
+ARTIFACTS_MODE=blob  # or: AZURE_ARTIFACTS_MODE
 ```
 
 **Local Input + Blob Artifacts:**
 ```bash
-AZURE_INPUT_MODE=local
-AZURE_LOCAL_GLOB=data/**/*.pdf
-AZURE_ARTIFACTS_MODE=blob
+INPUT_MODE=local  # or: AZURE_INPUT_MODE
+LOCAL_INPUT_GLOB=data/**/*.pdf  # or: AZURE_LOCAL_GLOB
+ARTIFACTS_MODE=blob  # or: AZURE_ARTIFACTS_MODE
 AZURE_STORAGE_ACCOUNT=your-account
 AZURE_STORAGE_ACCOUNT_KEY=your-key
 AZURE_BLOB_CONTAINER_PREFIX=project
@@ -184,14 +196,13 @@ AZURE_BLOB_CONTAINER_PREFIX=project
 ```bash
 AZURE_DOC_INT_ENDPOINT=https://your-di.cognitiveservices.azure.com/
 AZURE_DOC_INT_KEY=your-key
-AZURE_OFFICE_EXTRACTOR_MODE=hybrid
-AZURE_OFFICE_OFFLINE_FALLBACK=true
+EXTRACTION_MODE=hybrid  # azure_di, markitdown, or hybrid
 AZURE_DI_MAX_CONCURRENCY=3
 ```
 
 **MarkItDown Only (Offline):**
 ```bash
-AZURE_OFFICE_EXTRACTOR_MODE=markitdown
+EXTRACTION_MODE=markitdown
 # Optional: LibreOffice for DOC files
 AZURE_OFFICE_LIBREOFFICE_PATH=/usr/bin/soffice
 ```
@@ -427,6 +438,64 @@ pip install -r requirements.txt
 pip install -r requirements-chromadb.txt
 pip install -r requirements-embeddings.txt
 pip install cohere
+```
+
+---
+
+## 🖥️ CLI Quick Commands
+
+### Validation & Index Management
+```bash
+# Validate configuration (pre-check before processing)
+python -m ingestor.cli --validate
+
+# Check if index exists
+python -m ingestor.cli --check-index
+
+# Deploy/update index only (no ingestion)
+python -m ingestor.cli --index-only
+
+# Setup index and process documents
+python -m ingestor.cli --setup-index --glob "documents/*.pdf"
+
+# Force recreate index (WARNING: destroys data)
+python -m ingestor.cli --force-index
+
+# Delete index
+python -m ingestor.cli --delete-index
+```
+
+### Processing Documents
+```bash
+# Process documents with glob pattern
+python -m ingestor.cli --glob "documents/**/*.pdf"
+
+# Process single file
+python -m ingestor.cli --pdf "document.pdf"
+
+# Use specific environment file
+python -m ingestor.cli --env .env.chromadb --glob "documents/*.pdf"
+
+# Remove specific documents from index
+python -m ingestor.cli --action remove --glob "old_doc.pdf"
+
+# Remove ALL documents (WARNING: clears index)
+python -m ingestor.cli --action removeall
+```
+
+### Options
+```bash
+# Verbose logging
+python -m ingestor.cli --verbose --glob "documents/*.pdf"
+
+# No colors (for CI/CD)
+python -m ingestor.cli --no-colors --glob "documents/*.pdf"
+
+# Skip ingestion (only run index operations)
+python -m ingestor.cli --setup-index --skip-ingestion
+
+# Clean artifacts for specific files
+python -m ingestor.cli --clean-artifacts --glob "document.pdf"
 ```
 
 ---

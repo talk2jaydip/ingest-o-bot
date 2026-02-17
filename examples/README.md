@@ -146,6 +146,98 @@ python examples/azure_search_cohere.py
 
 ---
 
+## 🔌 Plugin System Examples
+
+### Custom Vector Store Plugin
+
+Create a custom vector store by extending the `VectorStore` base class:
+
+```python
+from ingestor.plugin_registry import register_vector_store
+from ingestor.vector_store import VectorStore
+
+@register_vector_store("my_custom_db")
+class MyCustomVectorStore(VectorStore):
+    def __init__(self, config, **kwargs):
+        super().__init__(config, **kwargs)
+        # Initialize your custom database connection
+
+    async def upload_chunks(self, chunks):
+        # Implement your upload logic
+        pass
+```
+
+Then use it in your configuration:
+```bash
+VECTOR_STORE_MODE=my_custom_db
+```
+
+### Custom Embeddings Provider Plugin
+
+Create a custom embeddings provider:
+
+```python
+from ingestor.plugin_registry import register_embeddings_provider
+from ingestor.embeddings_provider import EmbeddingsProvider
+
+@register_embeddings_provider("my_custom_embeddings")
+class MyCustomEmbeddings(EmbeddingsProvider):
+    def __init__(self, config, **kwargs):
+        super().__init__(config, **kwargs)
+        # Initialize your embedding model
+
+    async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
+        # Implement your embedding generation logic
+        pass
+
+    @property
+    def embedding_dimensions(self) -> int:
+        return 768  # Your model's dimension
+
+    @property
+    def max_sequence_length(self) -> int:
+        return 512  # Your model's max tokens
+```
+
+---
+
+## 🖥️ CLI Examples
+
+### Validation and Pre-Check
+```bash
+# Validate configuration before processing
+python -m ingestor.cli --validate
+
+# Check if index exists and get status
+python -m ingestor.cli --check-index
+```
+
+### Index Management
+```bash
+# Deploy or update index only (no ingestion)
+python -m ingestor.cli --index-only
+
+# Setup index and process documents
+python -m ingestor.cli --setup-index --glob "documents/*.pdf"
+
+# Force recreate index (WARNING: destroys all data)
+python -m ingestor.cli --force-index
+```
+
+### Document Processing
+```bash
+# Process with specific env file
+python -m ingestor.cli --env .env.chromadb --glob "documents/*.pdf"
+
+# Process single file with verbose logging
+python -m ingestor.cli --verbose --pdf "document.pdf"
+
+# Remove specific documents
+python -m ingestor.cli --action remove --glob "old_doc.pdf"
+```
+
+---
+
 ## 📝 Python Script Examples
 
 ### 01_basic_usage.py

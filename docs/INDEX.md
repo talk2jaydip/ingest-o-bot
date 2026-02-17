@@ -30,16 +30,17 @@ Located in `docs/guides/`:
 | # | Guide | Description |
 |---|-------|-------------|
 | 1 | [Quick Start](guides/QUICKSTART.md) | ⭐ **Installation, setup, and first run** |
-| 2 | [Quick Reference](guides/QUICK_REFERENCE.md) | Fast lookup guide for common operations |
-| 3 | [Validation Guide](guides/VALIDATION.md) | ⭐ **Pre-check validation of configuration and environment** |
-| 4 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
-| 5 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
-| 6 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
-| 7 | [Artifact Storage Simplified](guides/ARTIFACT_STORAGE_SIMPLIFIED.md) | Simplified artifact storage configuration guide |
-| 8 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
-| 9 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
-| 10 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
-| 11 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
+| 2 | [CLI Reference](CLI_REFERENCE.md) | ⭐ **Complete command-line interface guide** |
+| 3 | [Quick Reference](guides/QUICK_REFERENCE.md) | Fast lookup guide for common operations |
+| 4 | [Validation Guide](guides/VALIDATION.md) | ⭐ **Pre-check validation of configuration and environment** |
+| 5 | [Library Usage](guides/LIBRARY_USAGE.md) | Using ingestor as a Python library |
+| 6 | [Configuration](guides/CONFIGURATION.md) | All configuration options explained |
+| 7 | [Environment & Secrets](guides/ENVIRONMENT_AND_SECRETS.md) | Managing multiple environments and secrets |
+| 8 | [Artifact Storage Simplified](guides/ARTIFACT_STORAGE_SIMPLIFIED.md) | Simplified artifact storage configuration guide |
+| 9 | [Logging Guide](LOGGING_GUIDE.md) | Centralized logging system and best practices |
+| 10 | [Batch Processing](guides/BATCH_PROCESSING.md) | Parallel document processing and batch optimization |
+| 11 | [Performance Tuning](guides/PERFORMANCE_TUNING.md) | Performance optimization strategies and tuning |
+| 12 | [Index Deployment](guides/INDEX_DEPLOYMENT_GUIDE.md) | Deploy index + ingest in one command |
 
 ### Pluggable Architecture
 
@@ -48,6 +49,13 @@ Located in `docs/guides/`:
 | 1 | [Vector Stores Guide](vector_stores.md) | ⭐ **Choose your vector database (Azure Search, ChromaDB)** |
 | 2 | [Embeddings Providers Guide](embeddings_providers.md) | ⭐ **Choose your embedding model (Azure OpenAI, Hugging Face, Cohere, OpenAI)** |
 | 3 | [Configuration Examples](configuration_examples.md) | ⭐ **All combinations and use cases (8 ready-to-use configurations)** |
+
+### Index Management
+
+| # | Guide | Description |
+|---|-------|-------------|
+| 1 | [Index Configuration](INDEX_CONFIGURATION.md) | ⭐ **Configure index schema (semantic search, scoring profiles, suggesters)** |
+| 2 | [JSON Schema Import/Export](JSON_SCHEMA_IMPORT_EXPORT.md) | ⭐ **Backup, migrate, and version control index schemas** |
 
 ---
 
@@ -211,15 +219,35 @@ python -m ingestor.cli --glob "data/*.pdf"
 
 ### Common Commands
 ```bash
+# Validate configuration
+python -m ingestor.cli --validate
+
+# Create/update index
+python -m ingestor.cli --index-only
+
 # Process PDFs
 python -m ingestor.cli --glob "*.pdf"
+
+# Setup index and process documents
+python -m ingestor.cli --setup-index --glob "documents/*.pdf"
 
 # Process all formats
 python -m ingestor.cli --glob "**/*"
 
+# Check index status
+python -m ingestor.cli --check-index
+
 # Remove documents
 python -m ingestor.cli --action remove --glob "old.pdf"
+
+# Export index schema (backup/version control)
+python -m ingestor.cli --export-schema schema.json
+
+# Import index schema (create from JSON)
+python -m ingestor.cli --import-schema schema.json
 ```
+
+📖 See [CLI Reference](CLI_REFERENCE.md) for complete command guide.
 
 ---
 
@@ -267,6 +295,7 @@ This documentation structure was reorganized to match the implementation order:
 ## 🔍 Finding What You Need
 
 - **New to the project?** → Start with [Quick Start Guide](guides/QUICKSTART.md)
+- **Using command-line?** → See [CLI Reference](CLI_REFERENCE.md) ⭐
 - **Validating setup?** → See [Validation Guide](guides/VALIDATION.md) ⭐
 - **Need quick commands?** → Check [Quick Reference](guides/QUICK_REFERENCE.md)
 - **Using as a library?** → See [Library Usage Guide](guides/LIBRARY_USAGE.md)
@@ -275,6 +304,8 @@ This documentation structure was reorganized to match the implementation order:
 - **Configuring the pipeline?** → Review [Configuration Guide](guides/CONFIGURATION.md)
 - **Managing environments?** → See [Environment & Secrets Guide](guides/ENVIRONMENT_AND_SECRETS.md)
 - **Configuring logging?** → See [Logging Guide](LOGGING_GUIDE.md)
+- **Configuring index?** → See [Index Configuration](INDEX_CONFIGURATION.md) ⭐
+- **Backup/migrate index?** → See [JSON Schema Import/Export](JSON_SCHEMA_IMPORT_EXPORT.md) ⭐
 - **Understanding a feature?** → Check [Features](reference/17_FEATURES.md)
 - **Troubleshooting?** → Review [Environment Variables](reference/12_ENVIRONMENT_VARIABLES.md)
 - **Advanced topics?** → Browse [Architecture](reference/18_ARCHITECTURE.md)
