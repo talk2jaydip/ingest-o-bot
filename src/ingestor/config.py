@@ -7,6 +7,22 @@ from typing import Optional
 
 from ingestor.logging_utils import get_logger
 
+# Load plugins on module import
+from .plugin_registry import discover_plugins, load_plugin_module
+
+# Auto-discover plugins from entry points
+discover_plugins()
+
+# Load plugins from environment variable
+plugin_modules = os.getenv("INGESTOR_PLUGINS", "").split(",")
+for module_path in plugin_modules:
+    if module_path.strip():
+        try:
+            load_plugin_module(module_path.strip())
+        except ImportError as e:
+            logger = get_logger(__name__)
+            logger.warning(f"Failed to load plugin module {module_path}: {e}")
+
 
 class InputMode(str, Enum):
     """Input source mode."""
@@ -105,7 +121,12 @@ class SearchConfig:
     index_name: Optional[str] = None
     api_key: Optional[str] = None
     service_name: Optional[str] = None  # Helper field for programmatic config
-    
+
+    # Index schema customization (optional)
+    semantic_config_name: Optional[str] = None
+    suggester_name: Optional[str] = None
+    scoring_profile_names: Optional[tuple] = None
+
     @classmethod
     def from_env(cls) -> "SearchConfig":
         """Load from environment variables."""
@@ -114,19 +135,32 @@ class SearchConfig:
             endpoint = f"https://{search_service}.search.windows.net"
         else:
             endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
-        
+
         index_name = os.getenv("AZURE_SEARCH_INDEX")
         api_key = os.getenv("AZURE_SEARCH_KEY")
-        
+
+        # Optional index schema customization
+        semantic_config_name = os.getenv("AZURE_SEARCH_SEMANTIC_CONFIG_NAME")
+        suggester_name = os.getenv("AZURE_SEARCH_SUGGESTER_NAME")
+
+        # Scoring profile names (comma-separated)
+        scoring_profiles_str = os.getenv("AZURE_SEARCH_SCORING_PROFILES")
+        scoring_profile_names = None
+        if scoring_profiles_str:
+            scoring_profile_names = tuple(p.strip() for p in scoring_profiles_str.split(","))
+
         if not endpoint:
             raise ValueError("AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_SERVICE is required")
         if not index_name:
             raise ValueError("AZURE_SEARCH_INDEX is required")
-        
+
         return cls(
             endpoint=endpoint,
             index_name=index_name,
-            api_key=api_key
+            api_key=api_key,
+            semantic_config_name=semantic_config_name,
+            suggester_name=suggester_name,
+            scoring_profile_names=scoring_profile_names
         )
 
 
@@ -341,6 +375,8 @@ class AzureOpenAIConfig:
     emb_dimensions: Optional[int] = None  # Custom dimensions for text-embedding-3-* models
     chat_deployment: Optional[str] = None
     chat_model_name: Optional[str] = None
+    vision_deployment: Optional[str] = None  # GPT-4o deployment for image description
+    vision_model_name: Optional[str] = None  # GPT-4o model name
     max_concurrency: int = 5
     max_retries: int = 3  # Retry attempts for API calls
     
@@ -360,7 +396,11 @@ class AzureOpenAIConfig:
         
         chat_deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
         chat_model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") or os.getenv("AZURE_OPENAI_MODEL")
-        
+
+        # Vision (GPT-4o) configuration for image description
+        vision_deployment = os.getenv("AZURE_OPENAI_VISION_DEPLOYMENT")
+        vision_model_name = os.getenv("AZURE_OPENAI_VISION_MODEL")
+
         max_concurrency = int(os.getenv("AZURE_OPENAI_MAX_CONCURRENCY", "5"))
         max_retries = int(os.getenv("AZURE_OPENAI_MAX_RETRIES", "3"))
         
@@ -380,6 +420,8 @@ class AzureOpenAIConfig:
             emb_dimensions=emb_dimensions,
             chat_deployment=chat_deployment,
             chat_model_name=chat_model_name,
+            vision_deployment=vision_deployment,
+            vision_model_name=vision_model_name,
             max_concurrency=max_concurrency,
             max_retries=max_retries
         )
@@ -558,13 +600,16 @@ class InputConfig:
     @classmethod
     def from_env(cls) -> "InputConfig":
         """Load from environment variables."""
-        mode_str = os.getenv("AZURE_INPUT_MODE", "local").lower()
+        # Support both AZURE_INPUT_MODE and INPUT_MODE
+        mode_str = os.getenv("AZURE_INPUT_MODE") or os.getenv("INPUT_MODE", "local")
+        mode_str = mode_str.lower()
         mode = InputMode(mode_str)
-        
+
         if mode == InputMode.LOCAL:
-            local_glob = os.getenv("AZURE_LOCAL_GLOB")
+            # Support both AZURE_LOCAL_GLOB and LOCAL_INPUT_GLOB
+            local_glob = os.getenv("AZURE_LOCAL_GLOB") or os.getenv("LOCAL_INPUT_GLOB")
             if not local_glob:
-                raise ValueError("AZURE_LOCAL_GLOB is required when AZURE_INPUT_MODE=local")
+                raise ValueError("AZURE_LOCAL_GLOB or LOCAL_INPUT_GLOB is required when INPUT_MODE=local")
             return cls(mode=mode, local_glob=local_glob)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -634,25 +679,25 @@ class ArtifactsConfig:
         - AZURE_ARTIFACTS_MODE: Still supported for explicit control
         - AZURE_STORE_ARTIFACTS_TO_BLOB: Still supported but redundant with input_mode
         """
-        # Check if AZURE_ARTIFACTS_DIR is explicitly set (HIGHEST PRIORITY - OVERRIDE)
-        artifacts_dir = os.getenv("AZURE_ARTIFACTS_DIR")
+        # Check if AZURE_ARTIFACTS_DIR or LOCAL_ARTIFACTS_DIR is explicitly set (HIGHEST PRIORITY - OVERRIDE)
+        artifacts_dir = os.getenv("AZURE_ARTIFACTS_DIR") or os.getenv("LOCAL_ARTIFACTS_DIR")
 
         if artifacts_dir:
-            # AZURE_ARTIFACTS_DIR explicitly set - use local storage
+            # Artifacts directory explicitly set - use local storage
             mode = ArtifactsMode.LOCAL
             get_logger(__name__).info(
                 f"Using local artifacts storage: {artifacts_dir} "
                 f"(overrides input_mode={input_mode.value if input_mode else 'not set'})"
             )
         else:
-            # Check deprecated flags for backwards compatibility
-            mode_str = os.getenv("AZURE_ARTIFACTS_MODE")
+            # Check for mode flags (support both AZURE_ARTIFACTS_MODE and ARTIFACTS_MODE)
+            mode_str = os.getenv("AZURE_ARTIFACTS_MODE") or os.getenv("ARTIFACTS_MODE")
             force_blob = os.getenv("AZURE_STORE_ARTIFACTS_TO_BLOB", "").lower() == "true"
 
             if mode_str:
-                # Explicit mode set (deprecated but supported)
+                # Explicit mode set
                 mode = ArtifactsMode(mode_str.lower())
-                get_logger(__name__).info(f"Using AZURE_ARTIFACTS_MODE={mode.value} (deprecated, prefer removing this flag)")
+                get_logger(__name__).info(f"Using artifacts mode: {mode.value}")
             elif force_blob:
                 # Override flag set (deprecated but supported)
                 mode = ArtifactsMode.BLOB
@@ -667,7 +712,8 @@ class ArtifactsConfig:
                 get_logger(__name__).info("Using default: local artifacts storage")
 
         if mode == ArtifactsMode.LOCAL:
-            local_dir = os.getenv("AZURE_ARTIFACTS_DIR", "./artifacts")
+            # Support both AZURE_ARTIFACTS_DIR and LOCAL_ARTIFACTS_DIR
+            local_dir = os.getenv("AZURE_ARTIFACTS_DIR") or os.getenv("LOCAL_ARTIFACTS_DIR", "./artifacts")
             return cls(mode=mode, local_dir=local_dir)
         else:
             storage_account = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -873,12 +919,18 @@ class PipelineConfig:
             >>> # Load from specific environment file
             >>> config = PipelineConfig.from_env(".env.production")
         """
-        # Load .env file if path specified or if dotenv is available
-        if env_path:
-            try:
-                from dotenv import load_dotenv
+        # Load .env file if available
+        try:
+            from dotenv import load_dotenv
+            if env_path:
+                # Explicit path provided - use it
                 load_dotenv(dotenv_path=env_path, override=True)
-            except ImportError:
+            else:
+                # No path provided - auto-discover .env file
+                # load_dotenv() will search for .env in current dir and parent dirs
+                load_dotenv(override=False)
+        except ImportError:
+            if env_path:
                 get_logger(__name__).warning(
                     f"python-dotenv not installed, cannot load {env_path}. "
                     "Install with: pip install python-dotenv"

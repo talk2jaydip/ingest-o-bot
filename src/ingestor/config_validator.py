@@ -288,6 +288,108 @@ PARAMETER_REGISTRY: Dict[str, ParamDefinition] = {
         default=None,
         description="Azure OpenAI embedding deployment name",
     ),
+    "AZURE_OPENAI_API_VERSION": ParamDefinition(
+        name="AZURE_OPENAI_API_VERSION",
+        category="Azure OpenAI",
+        type=ParamType.STRING,
+        default="2024-12-01-preview",
+        description="Azure OpenAI API version",
+    ),
+    "AZURE_OPENAI_EMBEDDING_MODEL": ParamDefinition(
+        name="AZURE_OPENAI_EMBEDDING_MODEL",
+        category="Azure OpenAI",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure OpenAI embedding model name",
+    ),
+    "AZURE_OPENAI_EMBEDDING_DIMENSIONS": ParamDefinition(
+        name="AZURE_OPENAI_EMBEDDING_DIMENSIONS",
+        category="Azure OpenAI",
+        type=ParamType.INTEGER,
+        default=1536,
+        description="Azure OpenAI embedding dimensions",
+    ),
+    "AZURE_OPENAI_VISION_DEPLOYMENT": ParamDefinition(
+        name="AZURE_OPENAI_VISION_DEPLOYMENT",
+        category="Azure OpenAI",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure OpenAI vision deployment name for GPT-4o",
+    ),
+    "AZURE_OPENAI_VISION_MODEL": ParamDefinition(
+        name="AZURE_OPENAI_VISION_MODEL",
+        category="Azure OpenAI",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure OpenAI vision model name",
+    ),
+    "AZURE_OPENAI_MAX_CONCURRENCY": ParamDefinition(
+        name="AZURE_OPENAI_MAX_CONCURRENCY",
+        category="Azure OpenAI",
+        type=ParamType.INTEGER,
+        default=5,
+        description="Maximum concurrent requests to Azure OpenAI",
+    ),
+    "AZURE_OPENAI_MAX_RETRIES": ParamDefinition(
+        name="AZURE_OPENAI_MAX_RETRIES",
+        category="Azure OpenAI",
+        type=ParamType.INTEGER,
+        default=3,
+        description="Maximum retries for Azure OpenAI requests",
+    ),
+
+    # Azure Document Intelligence Parameters
+    "AZURE_DOC_INT_ENDPOINT": ParamDefinition(
+        name="AZURE_DOC_INT_ENDPOINT",
+        category="Document Intelligence",
+        type=ParamType.URL,
+        default=None,
+        description="Azure Document Intelligence endpoint URL",
+    ),
+    "AZURE_DOC_INT_KEY": ParamDefinition(
+        name="AZURE_DOC_INT_KEY",
+        category="Document Intelligence",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure Document Intelligence API key",
+    ),
+    "AZURE_DI_MAX_CONCURRENCY": ParamDefinition(
+        name="AZURE_DI_MAX_CONCURRENCY",
+        category="Document Intelligence",
+        type=ParamType.INTEGER,
+        default=5,
+        description="Maximum concurrent requests to Azure Document Intelligence",
+    ),
+
+    # Azure Storage Parameters
+    "AZURE_STORAGE_ACCOUNT": ParamDefinition(
+        name="AZURE_STORAGE_ACCOUNT",
+        category="Azure Storage",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure Storage account name",
+    ),
+    "AZURE_STORAGE_ACCOUNT_KEY": ParamDefinition(
+        name="AZURE_STORAGE_ACCOUNT_KEY",
+        category="Azure Storage",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure Storage account key",
+    ),
+    "AZURE_CONNECTION_STRING": ParamDefinition(
+        name="AZURE_CONNECTION_STRING",
+        category="Azure Storage",
+        type=ParamType.STRING,
+        default=None,
+        description="Azure Storage connection string",
+    ),
+    "AZURE_BLOB_CONTAINER_PREFIX": ParamDefinition(
+        name="AZURE_BLOB_CONTAINER_PREFIX",
+        category="Azure Storage",
+        type=ParamType.STRING,
+        default=None,
+        description="Prefix for auto-generated Azure Blob container names",
+    ),
 
     # Input/Output Parameters
     "AZURE_INPUT_MODE": ParamDefinition(
@@ -310,6 +412,112 @@ PARAMETER_REGISTRY: Dict[str, ParamDefinition] = {
         type=ParamType.PATH,
         default=None,
         description="Local artifacts directory",
+    ),
+    "LOCAL_INPUT_GLOB": ParamDefinition(
+        name="LOCAL_INPUT_GLOB",
+        category="Input",
+        type=ParamType.STRING,
+        default=None,
+        description="Local file glob pattern (alias for AZURE_LOCAL_GLOB)",
+        aliases=["AZURE_LOCAL_GLOB"],
+    ),
+    "LOCAL_ARTIFACTS_DIR": ParamDefinition(
+        name="LOCAL_ARTIFACTS_DIR",
+        category="Artifacts",
+        type=ParamType.PATH,
+        default=None,
+        description="Local artifacts directory (alias for AZURE_ARTIFACTS_DIR)",
+        aliases=["AZURE_ARTIFACTS_DIR"],
+    ),
+
+    # Mode Configuration
+    "INPUT_MODE": ParamDefinition(
+        name="INPUT_MODE",
+        category="Mode",
+        type=ParamType.STRING,
+        default="local",
+        description="Input mode (local, blob)",
+    ),
+    "ARTIFACTS_MODE": ParamDefinition(
+        name="ARTIFACTS_MODE",
+        category="Mode",
+        type=ParamType.STRING,
+        default="local",
+        description="Artifacts storage mode (local, blob)",
+    ),
+    "EXTRACTION_MODE": ParamDefinition(
+        name="EXTRACTION_MODE",
+        category="Mode",
+        type=ParamType.STRING,
+        default="azure_di",
+        description="Document extraction mode (azure_di, markitdown, hybrid)",
+    ),
+    "MEDIA_DESCRIBER_MODE": ParamDefinition(
+        name="MEDIA_DESCRIBER_MODE",
+        category="Mode",
+        type=ParamType.STRING,
+        default="disabled",
+        description="Media description mode (disabled, gpt4o, content_understanding)",
+    ),
+    "TABLE_RENDER_FORMAT": ParamDefinition(
+        name="TABLE_RENDER_FORMAT",
+        category="Mode",
+        type=ParamType.STRING,
+        default="markdown",
+        description="Table rendering format (plain, markdown, html)",
+    ),
+
+    # Chunking Parameters
+    "CHUNKING_DISABLE_CHAR_LIMIT": ParamDefinition(
+        name="CHUNKING_DISABLE_CHAR_LIMIT",
+        category="Chunking",
+        type=ParamType.BOOLEAN,
+        default=True,
+        description="Disable character limit for chunking",
+    ),
+
+    # Performance Parameters
+    "UPLOAD_BATCH_SIZE": ParamDefinition(
+        name="UPLOAD_BATCH_SIZE",
+        category="Performance",
+        type=ParamType.INTEGER,
+        default=1000,
+        description="Batch size for uploading documents to vector store",
+    ),
+    "INNER_ANALYZE_WORKERS": ParamDefinition(
+        name="INNER_ANALYZE_WORKERS",
+        category="Performance",
+        type=ParamType.INTEGER,
+        default=1,
+        description="Number of workers for inner analysis tasks",
+    ),
+    "MAX_IMAGE_CONCURRENCY": ParamDefinition(
+        name="MAX_IMAGE_CONCURRENCY",
+        category="Performance",
+        type=ParamType.INTEGER,
+        default=8,
+        description="Maximum concurrent image processing tasks",
+    ),
+    "MAX_FIGURE_CONCURRENCY": ParamDefinition(
+        name="MAX_FIGURE_CONCURRENCY",
+        category="Performance",
+        type=ParamType.INTEGER,
+        default=5,
+        description="Maximum concurrent figure processing tasks",
+    ),
+    "MAX_BATCH_UPLOAD_CONCURRENCY": ParamDefinition(
+        name="MAX_BATCH_UPLOAD_CONCURRENCY",
+        category="Performance",
+        type=ParamType.INTEGER,
+        default=5,
+        description="Maximum concurrent batch upload tasks",
+    ),
+    "UPLOAD_DELAY": ParamDefinition(
+        name="UPLOAD_DELAY",
+        category="Performance",
+        type=ParamType.FLOAT,
+        default=0.5,
+        description="Delay between uploads in seconds",
     ),
 }
 
