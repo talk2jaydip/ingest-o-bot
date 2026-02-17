@@ -13,7 +13,7 @@ CHUNKING LIMITS HIERARCHY:
 1. NORMAL TEXT CHUNKS:
    - Max Tokens: 500 (HARD - never exceeded)
    - Max Chars: 1000 (SOFT - can exceed by 20% = 1200)
-   - Can be configured via: AZURE_CHUNKING_MAX_TOKENS, AZURE_CHUNKING_MAX_CHARS
+   - Can be configured via: CHUNKING_MAX_TOKENS, CHUNKING_MAX_CHARS
 
 2. TABLES/FIGURES (ATOMIC BLOCKS):
    - No token limit (atomic, cannot be split)
@@ -22,25 +22,25 @@ CHUNKING LIMITS HIERARCHY:
 
 3. TABLE + LEGEND:
    - Max: 2.5x base token limit (default: 1250 tokens for 500 base)
-   - Configurable via: AZURE_CHUNKING_TABLE_LEGEND_BUFFER (default: 2.5)
+   - Configurable via: CHUNKING_TABLE_LEGEND_BUFFER (default: 2.5)
    - Legends provide critical context and should stay with tables
 
 4. ABSOLUTE MAXIMUM (SAFETY):
    - Hard limit: 8000 tokens (configurable)
    - Based on embedding model limit (8191 tokens)
-   - Configurable via: AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS
+   - Configurable via: CHUNKING_ABSOLUTE_MAX_TOKENS
    - Prevents chunks that would fail embedding
 
 CONFIGURATION:
 ==============
 Environment Variables:
-- AZURE_CHUNKING_MAX_TOKENS=500              # Base token limit for text
-- AZURE_CHUNKING_MAX_CHARS=1000              # Base char limit for text
-- AZURE_CHUNKING_OVERLAP_PERCENT=10          # Overlap between chunks
-- AZURE_CHUNKING_DISABLE_CHAR_LIMIT=false    # Ignore char limit
-- AZURE_CHUNKING_CROSS_PAGE_OVERLAP=false    # Allow overlap across pages
-- AZURE_CHUNKING_TABLE_LEGEND_BUFFER=2.5     # Multiplier for table+legend
-- AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS=8000    # Safety limit (< 8191)
+- CHUNKING_MAX_TOKENS=500              # Base token limit for text
+- CHUNKING_MAX_CHARS=1000              # Base char limit for text
+- CHUNKING_OVERLAP_PERCENT=10          # Overlap between chunks
+- CHUNKING_DISABLE_CHAR_LIMIT=false    # Ignore char limit
+- CHUNKING_CROSS_PAGE_OVERLAP=false    # Allow overlap across pages
+- CHUNKING_TABLE_LEGEND_BUFFER=2.5     # Multiplier for table+legend
+- CHUNKING_ABSOLUTE_MAX_TOKENS=8000    # Safety limit (< 8191)
 """
 
 import os
@@ -77,16 +77,17 @@ WORD_BREAKS = [
 # Default chunking parameters loaded from environment variables
 # Falls back to original prepdocslib defaults if not set
 # Note: PipelineConfig.chunking loads these same values, so pipeline.py will pass explicit values
-DEFAULT_MAX_TOKENS = int(os.getenv("AZURE_CHUNKING_MAX_TOKENS", "500"))  # Target minimum tokens per chunk
-DEFAULT_MAX_SECTION_TOKENS = int(os.getenv("AZURE_CHUNKING_MAX_SECTION_TOKENS", "750"))  # Hard maximum tokens (allows room for tables)
-DEFAULT_SECTION_LENGTH = int(os.getenv("AZURE_CHUNKING_MAX_CHARS", "1000"))  # Soft limit - can be exceeded by 20%
-DEFAULT_OVERLAP_PERCENT = int(os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT", "10"))  # Semantic overlap between chunks
-DEFAULT_CROSS_PAGE_OVERLAP = os.getenv("AZURE_CHUNKING_CROSS_PAGE_OVERLAP", "true").lower() == "true"  # Enable by default
+# Backward compatibility: Check new variable names first, then fall back to old AZURE_* names
+DEFAULT_MAX_TOKENS = int(os.getenv("CHUNKING_MAX_TOKENS") or os.getenv("AZURE_CHUNKING_MAX_TOKENS", "500"))  # Target minimum tokens per chunk
+DEFAULT_MAX_SECTION_TOKENS = int(os.getenv("CHUNKING_MAX_SECTION_TOKENS") or os.getenv("AZURE_CHUNKING_MAX_SECTION_TOKENS", "750"))  # Hard maximum tokens (allows room for tables)
+DEFAULT_SECTION_LENGTH = int(os.getenv("CHUNKING_MAX_CHARS") or os.getenv("AZURE_CHUNKING_MAX_CHARS", "1000"))  # Soft limit - can be exceeded by 20%
+DEFAULT_OVERLAP_PERCENT = int(os.getenv("CHUNKING_OVERLAP_PERCENT") or os.getenv("AZURE_CHUNKING_OVERLAP_PERCENT", "10"))  # Semantic overlap between chunks
+DEFAULT_CROSS_PAGE_OVERLAP = (os.getenv("CHUNKING_CROSS_PAGE_OVERLAP") or os.getenv("AZURE_CHUNKING_CROSS_PAGE_OVERLAP", "true")).lower() == "true"  # Enable by default
 
 # Table/figure special limits
 # Tables are atomic blocks and can exceed normal token limits, but must stay within embedding model limits
-DEFAULT_TABLE_LEGEND_BUFFER_MULTIPLIER = float(os.getenv("AZURE_CHUNKING_TABLE_LEGEND_BUFFER", "2.5"))  # Multiplier for table+legend
-ABSOLUTE_MAX_TOKENS = int(os.getenv("AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS", "8000"))  # Safety limit (below embedding model's 8191)
+DEFAULT_TABLE_LEGEND_BUFFER_MULTIPLIER = float(os.getenv("CHUNKING_TABLE_LEGEND_BUFFER") or os.getenv("AZURE_CHUNKING_TABLE_LEGEND_BUFFER", "2.5"))  # Multiplier for table+legend
+ABSOLUTE_MAX_TOKENS = int(os.getenv("CHUNKING_ABSOLUTE_MAX_TOKENS") or os.getenv("AZURE_CHUNKING_ABSOLUTE_MAX_TOKENS", "8000"))  # Safety limit (below embedding model's 8191)
 
 # Regex patterns for page headers/footers/numbers
 PAGE_HEADER_PATTERN = re.compile(r'<!--\s*PageHeader="([^"]+)"\s*-->')
@@ -122,7 +123,10 @@ def extract_page_header(text: str) -> tuple[str, Optional[str]]:
     - <!-- PageFooter="..." --> - Remove (not used)
     - <!-- PageNumber="..." --> - Remove (overhead)
 
-    Fallback: If no PageHeader metadata found, extracts titles from markdown headers (# and ##)
+    Fallback hierarchy (in order of preference):
+    1. PageHeader metadata
+    2. Markdown headers (# and ##)
+    3. Table captions/titles from <figure> tags
     """
     headers = []
 
@@ -138,7 +142,7 @@ def extract_page_header(text: str) -> tuple[str, Optional[str]]:
     cleaned_text = PAGE_FOOTER_PATTERN.sub('', cleaned_text)
     cleaned_text = PAGE_NUMBER_PATTERN.sub('', cleaned_text)  # Remove PageNumber overhead
 
-    # Fallback: If no PageHeader metadata, extract from markdown headers
+    # Fallback 1: If no PageHeader metadata, extract from markdown headers
     if not headers:
         # Look for markdown headers (# Header or ## Header)
         # Match lines that start with 1-3 # followed by space and text
@@ -153,6 +157,26 @@ def extract_page_header(text: str) -> tuple[str, Optional[str]]:
                 if len(header_text) >= 10:  # Meaningful title threshold
                     headers.append(header_text)
                     break  # Use first meaningful header as title
+
+    # Fallback 2: If still no headers, try extracting from table structure
+    # This is critical for offline mode where tables may lack PageHeader metadata
+    if not headers:
+        # Look for table captions in <figure> tags
+        # Pattern: <figure id="table-X">...<caption>Table X: Title</caption>...
+        # Or: Table X-Y Title pattern at start of content
+        table_caption_pattern = re.compile(
+            r'<figure[^>]*>.*?(?:<caption>|Table\s+[\dA-Z]+-?[\d]*[:\.]?\s*)([^<\n]{10,100})',
+            re.IGNORECASE | re.DOTALL
+        )
+        caption_matches = table_caption_pattern.findall(cleaned_text)
+
+        if caption_matches:
+            # Use first table caption as context header
+            caption = caption_matches[0].strip()
+            # Clean up: remove trailing punctuation, normalize spaces
+            caption = re.sub(r'\s+', ' ', caption).strip('.:')
+            if len(caption) >= 10:  # Meaningful caption threshold
+                headers.append(f"Table: {caption}")
 
     # Combine unique headers
     if headers:
@@ -267,8 +291,14 @@ class _ChunkBuilder:
         return True
     
     def force_append(self, text: str):
-        """Append text even if it overflows (for figures)."""
+        """Append text even if it overflows (for figures).
+
+        Note: Also updates token_len for accurate tracking.
+        """
         self.parts.append(text)
+        # Update token count for accurate tracking
+        text_tokens = len(bpe.encode(text))
+        self.token_len += text_tokens
     
     def flush_into(self, out: list[TextChunk], page_header: Optional[str] = None):
         """Flush accumulated content as a chunk."""
@@ -341,40 +371,74 @@ class LayoutAwareChunker:
         self.sentence_search_limit = 100
         self.embedding_max_tokens = embedding_max_tokens
 
+        # Log initial configuration (before adjustment)
+        get_logger(__name__).info("Chunker initialized:")
+        get_logger(__name__).info(f"  Initial target: {self.max_tokens_per_section} tokens (CHUNKING_MAX_TOKENS)")
+        get_logger(__name__).info(f"  Initial hard max: {self.max_section_length_tokens} tokens")
+        get_logger(__name__).info(f"  Overlap: {overlap_percent}%")
+
         # Apply dynamic limit adjustment if embedding model has tighter constraints
         if embedding_max_tokens:
+            get_logger(__name__).info(f"  Embedding model limit: {embedding_max_tokens} tokens (safety check only)")
+
             # Calculate safe limit considering:
             # 1. Overlap can add up to overlap_percent% more tokens
             # 2. Orphan merging can increase chunk size
-            # 3. Keep 15% buffer for safety
-            overlap_buffer = 1 + (overlap_percent / 100)  # e.g., 1.10 for 10% overlap
-            safety_buffer = 0.85  # Use only 85% of limit, leaving 15% buffer
+            # 3. Keep 5% buffer for safety (reduced from 15% per user request)
+            overlap_buffer = 1 + (overlap_percent / 100)  # e.g., 1.20 for 20% overlap
+            safety_buffer = 0.95  # Use 95% of limit, leaving 5% buffer
             safe_embedding_limit = int(embedding_max_tokens * safety_buffer / overlap_buffer)
 
+            # Ideal target chunk size range: 500-700 tokens
+            IDEAL_MIN_CHUNK_SIZE = 500
+            IDEAL_MAX_CHUNK_SIZE = 700
+
+            # Dynamically adjust based on model capacity
+            if safe_embedding_limit < IDEAL_MIN_CHUNK_SIZE:
+                # Model too small for ideal range - use what it can handle
+                get_logger(__name__).warning(
+                    f"⚠️  Embedding model limit ({embedding_max_tokens} tokens) too small for ideal range ({IDEAL_MIN_CHUNK_SIZE}-{IDEAL_MAX_CHUNK_SIZE}). "
+                    f"Dynamically adjusting to {safe_embedding_limit} tokens to prevent truncation."
+                )
+                target_chunk_size = safe_embedding_limit
+            elif safe_embedding_limit > IDEAL_MAX_CHUNK_SIZE:
+                # Model can handle more than ideal max - cap at 700 for optimal retrieval
+                get_logger(__name__).info(
+                    f"✓ Using ideal maximum chunk size: {IDEAL_MAX_CHUNK_SIZE} tokens "
+                    f"(model can handle up to {safe_embedding_limit} tokens, capping for optimal retrieval)"
+                )
+                target_chunk_size = IDEAL_MAX_CHUNK_SIZE
+            else:
+                # Model can handle ideal range - use minimum of range (500)
+                get_logger(__name__).info(
+                    f"✓ Using ideal chunk size: {IDEAL_MIN_CHUNK_SIZE} tokens "
+                    f"(model can handle up to {safe_embedding_limit} tokens)"
+                )
+                target_chunk_size = IDEAL_MIN_CHUNK_SIZE
+
             # Adjust chunking limits to respect embedding model
-            if safe_embedding_limit < self.max_section_length_tokens:
+            if target_chunk_size < self.max_section_length_tokens:
                 get_logger(__name__).warning(
                     f"⚠️  Embedding model max_seq_length ({embedding_max_tokens}) is smaller than "
-                    f"CHUNKING_MAX_SECTION_TOKENS ({self.max_section_length_tokens}). "
-                    f"Automatically reducing chunking limit to {safe_embedding_limit} tokens "
-                    f"(with {int((1-safety_buffer)*100)}% buffer and {overlap_percent}% overlap allowance) "
-                    f"to prevent truncation."
+                    f"configured max ({self.max_section_length_tokens}). "
+                    f"Automatically reducing to {target_chunk_size} tokens "
+                    f"(with {int((1-safety_buffer)*100)}% buffer and {overlap_percent}% overlap allowance)."
                 )
-                self.max_section_length_tokens = safe_embedding_limit
+                self.max_section_length_tokens = target_chunk_size
 
-            if safe_embedding_limit < self.max_tokens_per_section:
+            if target_chunk_size < self.max_tokens_per_section:
                 get_logger(__name__).warning(
-                    f"⚠️  Adjusting CHUNKING_MAX_TOKENS from {self.max_tokens_per_section} "
-                    f"to {safe_embedding_limit} to fit embedding model "
+                    f"⚠️  Adjusting target chunk size from {self.max_tokens_per_section} "
+                    f"to {target_chunk_size} tokens to fit embedding model "
                     f"(with buffers for overlap and safety)."
                 )
-                self.max_tokens_per_section = safe_embedding_limit
+                self.max_tokens_per_section = target_chunk_size
+            else:
+                get_logger(__name__).info(f"  ✓ Configuration is compatible with embedding model (no adjustment needed)")
 
-            # Update absolute max to never exceed embedding model limit
-            # Use the raw limit here (no buffer) as this is the hard safety limit
-            get_logger(__name__).info(
-                f"  Absolute max tokens set to {embedding_max_tokens} (embedding model limit)"
-            )
+            # Log final adjusted limits
+            get_logger(__name__).info(f"  FINAL target chunk size: {self.max_tokens_per_section} tokens")
+            get_logger(__name__).info(f"  FINAL hard maximum: {self.max_section_length_tokens} tokens")
     
     def chunk_pages(self, pages: list[ExtractedPage]) -> list[TextChunk]:
         """Chunk multiple pages with cross-page merging and overlap.
@@ -466,15 +530,33 @@ class LayoutAwareChunker:
                                         btext = table_ref + "\n\n" + btext
                                         logger.info(f"Moving table reference to table chunk: {table_ref[:60]}...")
 
-                    # Validate table/figure size (safety check)
+                    # Validate table/figure size and split if needed
                     figure_tokens = len(bpe.encode(btext))
-                    if figure_tokens > ABSOLUTE_MAX_TOKENS:
-                        logger.error(
-                            f"Table/figure exceeds ABSOLUTE MAX ({ABSOLUTE_MAX_TOKENS} tokens): "
-                            f"{figure_tokens} tokens on page {page.page_num + 1}. "
-                            f"This will cause embedding failures! Consider splitting the table."
+
+                    # Determine the effective limit for atomic content
+                    effective_limit = ABSOLUTE_MAX_TOKENS
+                    if self.embedding_max_tokens:
+                        # Use embedding model limit with 10% buffer for safety
+                        effective_limit = min(
+                            ABSOLUTE_MAX_TOKENS,
+                            int(self.embedding_max_tokens * 0.9)
                         )
-                        # Still emit it but log error - user needs to fix source document
+
+                    if figure_tokens > effective_limit:
+                        logger.warning(
+                            f"Table/figure ({figure_tokens} tokens) exceeds embedding model limit "
+                            f"({effective_limit} tokens). Splitting into multiple chunks to prevent "
+                            f"truncation/OOM. Page {page.page_num + 1}."
+                        )
+                        # Flush current builder
+                        builder.flush_into(page_chunks, page_header)
+
+                        # Split the oversized table/figure into chunks
+                        for chunk in self._split_by_max_tokens(page.page_num, btext, page_header):
+                            page_chunks.append(chunk)
+
+                        previous_was_figure = True
+                        continue
 
                     # Add figure to builder
                     builder.force_append(btext)
@@ -529,13 +611,24 @@ class LayoutAwareChunker:
                 for span_idx, span in enumerate(spans):
                     span_tokens = len(bpe.encode(span))
 
-                    # DEBUG: Log all spans
+                    # DEBUG: Log all spans, especially large ones
                     span_preview = span[:60].replace('\n', ' ')
-                    if span_idx % 20 == 0 or any(phrase in span for phrase in ["remains", "Attention mechanisms", "In this work", "## 2 Background", "reducing sequential"]):
-                        logger.info(f"🔍 SPAN {span_idx}/{len(spans)}: {span_tokens} tokens, builder={builder.token_len} | {span_preview}")
+                    if span_tokens > 1000 or span_idx % 20 == 0 or any(phrase in span for phrase in ["remains", "Attention mechanisms", "In this work", "## 2 Background", "reducing sequential"]):
+                        logger.info(f"🔍 SPAN {span_idx}/{len(spans)}: {span_tokens} tokens (limit={self.max_tokens_per_section}), builder={builder.token_len} | {span_preview}")
 
                     # If single span exceeds token limit, split it recursively
+                    # DEBUG: Always log the comparison for large spans
+                    if span_tokens > 1000:
+                        logger.warning(
+                            f"🔍 DEBUG: Large span {span_tokens} tokens vs limit {self.max_tokens_per_section} "
+                            f"(will_split={span_tokens > self.max_tokens_per_section})"
+                        )
+
                     if span_tokens > self.max_tokens_per_section:
+                        logger.warning(
+                            f"⚠️  OVERSIZED SPAN DETECTED: {span_tokens} tokens > {self.max_tokens_per_section} limit "
+                            f"on page {page.page_num + 1}. Will split recursively. Preview: {span_preview}"
+                        )
                         spans_recursive_split += 1
                         # Before flushing, check if we've reached minimum
                         # Only flush if we have decent content or the span is really large
@@ -727,37 +820,76 @@ class LayoutAwareChunker:
         # Tables are already rendered from extractor - no processing needed
         
         # Replace figure placeholders with <figure> tags
+        logger = get_logger(__name__)
         for image in page.images:
+            caption_parts = [image.figure_id]
+            if image.title:
+                caption_parts.append(image.title)
+            caption = " ".join(caption_parts)
+
+            # Build figure markup (include description if available)
             if image.description:
-                caption_parts = [image.figure_id]
-                if image.title:
-                    caption_parts.append(image.title)
-                caption = " ".join(caption_parts)
-                # Use <figure> tags (matches original prepdocslib)
                 figure_markup = f"<figure id=\"{image.figure_id}\">\nFigure: {caption}\nDescription: {image.description}\n</figure>"
+            else:
+                # No description available - render without it
+                logger.warning(f"Figure {image.figure_id} on page {page.page_num + 1} has no description")
+                figure_markup = f"<figure id=\"{image.figure_id}\">\nFigure: {caption}\n</figure>"
+
+            # Replace placeholder
+            if image.placeholder in text:
                 text = text.replace(image.placeholder, figure_markup)
-        
+            else:
+                logger.warning(
+                    f"Figure placeholder '{image.placeholder}' not found in page {page.page_num + 1} text. "
+                    f"Figure description will not be included in chunks."
+                )
+
         return text
     
     def _split_into_spans(self, text: str) -> list[str]:
-        """Split text into sentence-like spans."""
+        """Split text into sentence-like spans.
+
+        Improved to handle table boundaries:
+        - Avoids splitting mid-table by detecting <figure> tags
+        - Ensures table content stays together for proper chunking
+        """
         spans = []
         current_chars = []
-        
-        for ch in text:
+        in_figure = False
+        figure_depth = 0
+
+        i = 0
+        while i < len(text):
+            ch = text[i]
             current_chars.append(ch)
-            if ch in self.sentence_endings:
+
+            # Track <figure> tag depth to avoid splitting inside tables/figures
+            if ch == '<':
+                # Look ahead to detect <figure or </figure>
+                remaining = text[i:i+10].lower()
+                if remaining.startswith('<figure'):
+                    figure_depth += 1
+                    in_figure = True
+                elif remaining.startswith('</figure>'):
+                    figure_depth = max(0, figure_depth - 1)
+                    if figure_depth == 0:
+                        in_figure = False
+
+            # Only split at sentence endings if NOT inside a figure/table
+            if ch in self.sentence_endings and not in_figure:
                 spans.append("".join(current_chars))
                 current_chars = []
-        
+
+            i += 1
+
         if current_chars:  # Remaining tail
             spans.append("".join(current_chars))
-        
+
         return spans
     
     def _find_split_pos(self, text: str) -> tuple[int, bool]:
         """Find split position for oversized span.
-        
+
         Returns: (position, use_overlap)
         - use_overlap=False: natural boundary found
         - use_overlap=True: no boundary, use midpoint + overlap
@@ -765,29 +897,46 @@ class LayoutAwareChunker:
         length = len(text)
         mid = length // 2
         window_limit = mid  # Search entire half
-        
+
+        # Define minimum distances from edges to prevent invalid splits
+        # Ensure we don't split too close to start (need at least 10% of text in first_half)
+        # or too close to end (need at least 10% of text in second_half)
+        min_edge_distance = int(length * 0.1)
+
         # 1. Sentence endings
         pos = 0
         while mid - pos > 0 or mid + pos < length:
             left = mid - pos
             right = mid + pos
-            if left >= 0 and left < length and text[left] in self.sentence_endings:
+            # Check left position: must be valid AND far enough from edges
+            if (left >= min_edge_distance and
+                left < length - min_edge_distance and
+                text[left] in self.sentence_endings):
                 return left, False
-            if right < length and text[right] in self.sentence_endings:
+            # Check right position: must be valid AND far enough from edges
+            if (right >= min_edge_distance and
+                right < length - min_edge_distance and
+                text[right] in self.sentence_endings):
                 return right, False
             pos += 1
-        
+
         # 2. Word breaks
         pos = 0
         while mid - pos > 0 or mid + pos < length:
             left = mid - pos
             right = mid + pos
-            if left >= 0 and left < length and text[left] in self.word_breaks:
+            # Check left position: must be valid AND far enough from edges
+            if (left >= min_edge_distance and
+                left < length - min_edge_distance and
+                text[left] in self.word_breaks):
                 return left, False
-            if right < length and text[right] in self.word_breaks:
+            # Check right position: must be valid AND far enough from edges
+            if (right >= min_edge_distance and
+                right < length - min_edge_distance and
+                text[right] in self.word_breaks):
                 return right, False
             pos += 1
-        
+
         # 3. Fallback - no boundary found
         return -1, True
     
@@ -798,6 +947,9 @@ class LayoutAwareChunker:
         1. Sentence-ending punctuation near midpoint
         2. Word-break character near midpoint
         3. Midpoint split with symmetric overlap
+
+        Note: self.max_tokens_per_section is already adjusted based on embedding_max_tokens
+        in __init__, so this method automatically respects the embedding model's limit.
         """
         tokens = bpe.encode(text)
         if len(tokens) <= self.max_tokens_per_section:
@@ -845,8 +997,25 @@ class LayoutAwareChunker:
                             best_split = pos
                             break
 
-            first_half = text[:best_split + overlap]
-            second_half = text[max(0, best_split - overlap):]
+            # Ensure split makes progress - both halves must have content
+            # Maximum first_half can be is 90% of text to guarantee second_half has content
+            max_first_half = int(len(text) * 0.9)
+            first_split_end = min(best_split + overlap, max_first_half)
+
+            # Ensure second_half starts before first_half ends (with overlap)
+            # Minimum second_half start is 10% into text to guarantee first_half has content
+            min_second_half_start = int(len(text) * 0.1)
+            second_split_start = max(min_second_half_start, best_split - overlap)
+
+            # Debug: Log when using forced split for tables without natural boundaries
+            logger.info(
+                f"Splitting at midpoint (no natural boundary found): "
+                f"text={len(text)} chars, first_half={first_split_end} chars, "
+                f"second_half starts at {second_split_start} (overlap={(first_split_end - second_split_start)} chars)"
+            )
+
+            first_half = text[:first_split_end]
+            second_half = text[second_split_start:]
 
         # Safety check: Ensure splits are making progress
         if len(first_half) >= len(text) or len(second_half) >= len(text):
@@ -866,7 +1035,13 @@ class LayoutAwareChunker:
         previous_chunk: TextChunk,
         page_chunks: list[TextChunk]
     ) -> tuple[Optional[TextChunk], list[TextChunk]]:
-        """Attempt to merge previous chunk with first chunk of new page."""
+        """Attempt to merge previous chunk with first chunk of new page.
+
+        Improved to handle table continuation across pages:
+        - Detects if previous chunk ends with incomplete table context
+        - Allows merging table continuation chunks when semantically connected
+        - Preserves table context for offline mode where PageHeader may be missing
+        """
         if not previous_chunk or not page_chunks:
             return previous_chunk, page_chunks
 
@@ -875,16 +1050,40 @@ class LayoutAwareChunker:
 
         # CRITICAL: Check if PageHeader changed (section boundary)
         # Different PageHeaders indicate different document sections - never merge
+        # EXCEPTION: Allow merge if both chunks lack PageHeader (offline mode)
+        # or if one has a table-derived header (indicates table continuation)
         if previous_chunk.page_header and first_new.page_header:
-            if previous_chunk.page_header.lower() != first_new.page_header.lower():
-                logger.info(
-                    f"Blocking cross-page merge: PageHeader changed from "
-                    f"'{previous_chunk.page_header}' to '{first_new.page_header}'"
-                )
-                return previous_chunk, page_chunks
+            # Check if either header is table-derived (starts with "Table:")
+            prev_is_table_header = previous_chunk.page_header.startswith("Table:")
+            next_is_table_header = first_new.page_header.startswith("Table:")
 
-        # Never merge if either side contains figures/tables (atomic blocks).
-        if "<figure" in previous_chunk.text.lower() or "<figure" in first_new_stripped[:60].lower():
+            # If both are table headers or headers match, allow potential merge
+            if not (prev_is_table_header or next_is_table_header):
+                if previous_chunk.page_header.lower() != first_new.page_header.lower():
+                    logger.info(
+                        f"Blocking cross-page merge: PageHeader changed from "
+                        f"'{previous_chunk.page_header}' to '{first_new.page_header}'"
+                    )
+                    return previous_chunk, page_chunks
+
+        # Improved table handling: Check if this is table continuation
+        prev_has_table = "<figure" in previous_chunk.text.lower()
+        next_has_table = "<figure" in first_new_stripped[:60].lower()
+
+        # Special case: If previous chunk ends with table and next starts with table,
+        # this might be a multi-page table. Check if we should add overlap context.
+        if prev_has_table and next_has_table:
+            # Both chunks have tables - likely continuation across pages
+            # Don't merge (tables are atomic), but ensure overlap is applied
+            logger.debug(
+                f"Table continuation detected: prev page {previous_chunk.page_num+1} "
+                f"and next page {first_new.page_num+1} both contain tables"
+            )
+            return previous_chunk, page_chunks
+
+        # Standard rule: Never merge if either side contains figures/tables (atomic blocks)
+        # unless it's clearly a continuation case
+        if prev_has_table or next_has_table:
             return previous_chunk, page_chunks
 
         # Safety net: Force merge very small orphan chunks to prevent poor quality chunks.
@@ -1245,14 +1444,15 @@ class LayoutAwareChunker:
 
                 # Try to merge if no HARD boundaries
                 if not starts_new_section and not prev_is_atomic and not page_header_blocks_merge:
-                    # Recalculate actual token counts (they may have changed due to overlaps)
-                    prev_actual_tokens = len(bpe.encode(prev.text))
-                    current_actual_tokens = len(bpe.encode(current.text))
+                    # Use cached token counts (TextChunk.token_count is always accurate)
+                    prev_actual_tokens = prev.token_count
+                    current_actual_tokens = current.token_count
 
+                    # Only encode combined text to check merge feasibility
                     combined_text = prev.text + "\n\n" + current.text
                     combined_tokens = len(bpe.encode(combined_text))
 
-                    print(f"  🔍 Checking: prev={prev_actual_tokens}tok (was {prev.token_count}), current={current_actual_tokens}tok (was {current.token_count}), combined={combined_tokens}tok")
+                    print(f"  🔍 Checking: prev={prev_actual_tokens}tok, current={current_actual_tokens}tok, combined={combined_tokens}tok")
 
                     # Priority: Semantic preservation over strict limits
                     # Strategy: Scale thresholds based on max_section_length_tokens
@@ -1349,26 +1549,61 @@ class LayoutAwareChunker:
 
         return None
 
+    def _extract_table_context(self, text: str) -> Optional[str]:
+        """Extract contextual information before a table for overlap.
+
+        Looks for text immediately before <figure> tags that provides context:
+        - Introductory sentences ("The following table shows...")
+        - Section headers before tables
+        - Explanatory text leading into tables
+
+        Returns up to 200 characters of context before first table, or None.
+        """
+        if not text or '<figure' not in text.lower():
+            return None
+
+        # Find first <figure> tag
+        figure_start = text.lower().find('<figure')
+        if figure_start <= 0:
+            return None
+
+        # Get text before the table
+        text_before = text[:figure_start].strip()
+        if not text_before:
+            return None
+
+        # Get last 200 chars (roughly 30-50 tokens) of context before table
+        context = text_before[-200:] if len(text_before) > 200 else text_before
+
+        # Try to start at sentence boundary
+        for ending in self.sentence_endings:
+            pos = context.find(ending)
+            if pos > 0:
+                context = context[pos+1:].strip()
+                break
+
+        return context if len(context) > 20 else None
+
     def _is_heading_like(self, text: str) -> bool:
         """Check if text looks like a heading."""
         text = text.strip()
         if not text or len(text) > 80:
             return False
-        
+
         if text.startswith("#"):
             return True
-        
+
         # Title Case or ALL CAPS (short)
         if text.isupper() or (text.istitle() and len(text.split()) <= 12):
             return True
-        
+
         # Numbered lists or section markers
         if re.match(r"^(?:\d+|[IVXLCM]+)[.)]\s", text):
             return True
-        
+
         if text.startswith(("- ", "* ", "• ")):
             return True
-        
+
         return False
     
     def _should_cross_page_overlap(self, prev: TextChunk, nxt: TextChunk) -> bool:
@@ -1398,6 +1633,13 @@ class LayoutAwareChunker:
 
         For RAG: Always add overlap to preserve semantic context, even with figures/tables.
         The overlap helps retrieval find relevant context at chunk boundaries.
+
+        Uses binary search to find optimal character position where tokens = target_tokens,
+        reducing bpe.encode() calls from ~1000+ to ~10-20 per overlap operation.
+
+        Improved for table handling:
+        - If next chunk starts with table, extract context before table for overlap
+        - Preserves table-related context for better retrieval
         """
         logger.info(f"_append_overlap called: prev={prev_chunk.token_count} tokens, next={next_chunk.token_count} tokens")
         if not prev_chunk or not next_chunk:
@@ -1408,63 +1650,96 @@ class LayoutAwareChunker:
         if target_tokens <= 0:
             return prev_chunk
 
-        # Extract text content from next chunk for overlap (skip figure tags if present)
-        # This ensures we get meaningful text even if chunk starts with a figure
+        # Extract text content from next chunk for overlap
         next_text = next_chunk.text
 
-        # If next chunk starts with figure, try to get text after it for better context
+        # Special handling for chunks starting with tables
         if next_text.lstrip().startswith("<figure"):
-            # Find end of figure tag and use text after it
-            figure_end = next_text.lower().find("</figure>")
-            if figure_end >= 0:
-                text_after_figure = next_text[figure_end + 9:].strip()
-                if len(text_after_figure) > 50:  # Has meaningful text after figure
-                    next_text = text_after_figure
-                # If no text after figure, use the full text (includes figure)
+            # Try to extract table context (text before table) for better overlap
+            table_context = self._extract_table_context(next_text)
+            if table_context:
+                # Use table context as overlap instead of table itself
+                next_text = table_context
+                logger.debug(f"Using table context for overlap: {next_text[:60]}...")
+            else:
+                # No context before table - try text after table
+                figure_end = next_text.lower().find("</figure>")
+                if figure_end >= 0:
+                    text_after_figure = next_text[figure_end + 9:].strip()
+                    if len(text_after_figure) > 50:  # Has meaningful text after figure
+                        next_text = text_after_figure
+                    # If no text after figure, use the full text (includes figure)
 
-        # Find text prefix that fits within target_tokens
-        # Start with rough estimate (1 token ≈ 4 chars), then refine
-        rough_char_estimate = target_tokens * 4
-        prefix = next_text[:rough_char_estimate]
-        prefix_tokens = len(bpe.encode(prefix))
+        # Binary search to find character position where tokens ≈ target_tokens
+        # This replaces the 3 character-by-character loops with ~10-20 bpe.encode() calls
+        left = 0
+        right = len(next_text)
+        best_pos = 0
+        best_tokens = 0
 
-        # Adjust prefix to hit target_tokens ± a few tokens
-        if prefix_tokens < target_tokens:
-            # Too short - grow character by character until we hit target
-            for i in range(rough_char_estimate, min(len(next_chunk.text), rough_char_estimate * 3)):
-                prefix = next_chunk.text[:i]
-                prefix_tokens = len(bpe.encode(prefix))
-                if prefix_tokens >= target_tokens:
-                    break
-        elif prefix_tokens > target_tokens:
-            # Too long - shrink
-            for i in range(rough_char_estimate, max(0, rough_char_estimate // 2), -1):
-                prefix = next_chunk.text[:i]
-                prefix_tokens = len(bpe.encode(prefix))
-                if prefix_tokens <= target_tokens:
-                    break
+        # Binary search for position where token count is closest to target
+        while left <= right:
+            mid = (left + right) // 2
+            prefix = next_text[:mid]
+            prefix_tokens = len(bpe.encode(prefix))
+
+            # Update best match if this is closer to target
+            if abs(prefix_tokens - target_tokens) < abs(best_tokens - target_tokens):
+                best_pos = mid
+                best_tokens = prefix_tokens
+
+            # If we hit target exactly (within ±2 tokens), we can stop
+            if abs(prefix_tokens - target_tokens) <= 2:
+                best_pos = mid
+                best_tokens = prefix_tokens
+                break
+            elif prefix_tokens < target_tokens:
+                left = mid + 1
+            else:
+                right = mid - 1
+
+        # Use the best position found
+        prefix = next_text[:best_pos]
+        prefix_tokens = best_tokens
 
         if not prefix.strip():
             return prev_chunk
 
-        # Extend to sentence/word boundary (but don't exceed target by too much)
+        # Extend to sentence/word boundary using binary search
+        # Instead of character-by-character, search for nearest boundary within token budget
         max_extension_tokens = int(target_tokens * 1.5)  # Allow 50% overage for boundaries
-        for i in range(len(prefix), min(len(next_chunk.text), len(prefix) * 2)):
-            ch = next_chunk.text[i]
-            candidate_prefix = prefix + ch
-            candidate_tokens = len(bpe.encode(candidate_prefix))
 
-            if candidate_tokens > max_extension_tokens:
-                break  # Too long, stop
+        # Find all sentence endings and word breaks in reasonable extension range
+        max_search_chars = min(len(next_text), best_pos + (target_tokens * 2))  # Estimate ~2 chars per token
+        search_text = next_text[best_pos:max_search_chars]
 
-            prefix = candidate_prefix
-            prefix_tokens = candidate_tokens
-
-            # Found good boundary
+        # Find nearest sentence ending
+        nearest_sentence_pos = -1
+        for i, ch in enumerate(search_text):
             if ch in self.sentence_endings:
-                break
-            if ch in self.word_breaks and i - len(prefix) + len(ch) > 10:
-                break
+                # Check if adding this would exceed token budget
+                candidate_prefix = next_text[:best_pos + i + 1]
+                candidate_tokens = len(bpe.encode(candidate_prefix))
+                if candidate_tokens <= max_extension_tokens:
+                    nearest_sentence_pos = best_pos + i + 1
+                    prefix = candidate_prefix
+                    prefix_tokens = candidate_tokens
+                    break
+                else:
+                    break  # Would exceed budget, stop
+
+        # If no sentence ending found or it's too far, look for word break
+        if nearest_sentence_pos == -1:
+            for i, ch in enumerate(search_text):
+                if ch in self.word_breaks and i > 10:  # Avoid immediate word breaks
+                    candidate_prefix = next_text[:best_pos + i + 1]
+                    candidate_tokens = len(bpe.encode(candidate_prefix))
+                    if candidate_tokens <= max_extension_tokens:
+                        prefix = candidate_prefix
+                        prefix_tokens = candidate_tokens
+                        break
+                    else:
+                        break  # Would exceed budget, stop
 
         # Trim trailing partial word if no boundary found
         while prefix and prefix[-1].isalnum() and len(prefix) > target_tokens:

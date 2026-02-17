@@ -14,7 +14,7 @@ from .chunker import LayoutAwareChunker, TextChunk, create_chunker
 from .config import PipelineConfig
 from .di_extractor import DocumentIntelligenceExtractor, ExtractedPage
 from .office_extractor import OfficeExtractor
-from .embeddings import EmbeddingsGenerator, create_embeddings_generator
+from .embeddings import EmbeddingsGenerator
 from .embeddings_provider import EmbeddingsProvider, create_embeddings_provider
 from .input_source import InputSource, create_input_source
 from .logging_utils import (
@@ -39,7 +39,7 @@ from .models import (
     TableReference,
 )
 from .page_splitter import PagePdfSplitter
-from .search_uploader import SearchUploader, create_search_uploader
+from .search_uploader import SearchUploader
 from .table_renderer import TableRenderer, create_table_renderer
 from .validator import PipelineValidator
 from .vector_store import VectorStore, create_vector_store
@@ -350,27 +350,37 @@ class Pipeline:
             await self.artifact_storage.ensure_containers_exist()
 
             # IMPORTANT: Validate blob storage configuration
-            # storage_url and citation URLs REQUIRE blob storage
-            if not isinstance(self.artifact_storage, BlobArtifactStorage):
+            # storage_url and citation URLs REQUIRE blob storage ONLY for Azure AI Search
+            # Determine if we're using Azure Search
+            using_azure_search = (
+                self.config.vector_store_mode == VectorStoreMode.AZURE_SEARCH
+                if self.config.vector_store_mode
+                else True  # Legacy default
+            )
+
+            if using_azure_search and not isinstance(self.artifact_storage, BlobArtifactStorage):
                 logger.warning("=" * 80)
                 logger.warning("⚠️  LOCAL ARTIFACTS MODE - Azure AI Search requires blob storage")
                 logger.warning("=" * 80)
                 logger.warning("Why this matters:")
-                logger.warning("  • Azure AI Search requires https:// blob URLs")
+                logger.warning("  • Azure AI Search requires https:// blob URLs for citation links")
                 logger.warning("  • Local artifacts use file:// URIs that won't work in the index")
-                logger.warning("  • Users won't be able to access document citations")
+                logger.warning("  • Document citations will not be accessible to end users")
                 logger.warning("")
                 logger.warning("To fix - Choose ONE option:")
                 logger.warning("")
                 logger.warning("  OPTION 1 (Recommended): Use blob input → blob artifacts")
-                logger.warning("    Set: AZURE_INPUT_MODE=blob")
-                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
+                logger.warning("    Set: INPUT_MODE=blob")
+                logger.warning("    Remove: LOCAL_ARTIFACTS_DIR (if set)")
                 logger.warning("    Result: Artifacts automatically go to blob storage")
                 logger.warning("")
-                logger.warning("  OPTION 2: Keep local input, override to blob artifacts")
-                logger.warning("    Keep: AZURE_INPUT_MODE=local")
-                logger.warning("    Remove: AZURE_ARTIFACTS_DIR (if set)")
-                logger.warning("    Add: AZURE_STORE_ARTIFACTS_TO_BLOB=true")
+                logger.warning("  OPTION 2: Keep local input, force blob artifacts")
+                logger.warning("    Keep: INPUT_MODE=local")
+                logger.warning("    Add: ARTIFACTS_MODE=blob")
+                logger.warning("    Configure blob storage variables (see CONFIGURATION.md)")
+                logger.warning("")
+                logger.warning("  OPTION 3: Accept limitation (citations won't work)")
+                logger.warning("    Keep current settings if you don't need citation links")
                 logger.warning("=" * 80)
                 logger.warning("")
         
@@ -394,6 +404,24 @@ class Pipeline:
             )
 
         if self.media_describer is None:
+            # Validate media describer configuration before creating
+            from .config import validate_media_describer_config
+            media_describer_errors = validate_media_describer_config(
+                self.config.media_describer_mode,
+                self.config.azure_openai,
+                self.config.content_understanding
+            )
+
+            if media_describer_errors:
+                error_msg = (
+                    "Media describer configuration is invalid:\n\n" +
+                    "\n\n".join(f"  • {error}" for error in media_describer_errors) +
+                    "\n\nFix these issues in your .env file, or disable media description:\n"
+                    "  MEDIA_DESCRIBER_MODE=disabled\n\n"
+                    "See: envs/.env.azure-local-input.example"
+                )
+                raise ValueError(error_msg)
+
             self.media_describer = create_media_describer(
                 self.config.media_describer_mode,
                 self.config.azure_openai,
@@ -416,6 +444,19 @@ class Pipeline:
                 config = self.config.azure_openai
 
             logger.info(f"  Mode: {mode.value}")
+
+            # Validate embeddings configuration before creating provider
+            from .config import validate_embeddings_config
+            embeddings_errors = validate_embeddings_config(mode, config)
+
+            if embeddings_errors:
+                error_msg = (
+                    f"Embeddings configuration is invalid for EMBEDDINGS_MODE={mode.value}:\n\n" +
+                    "\n\n".join(f"  • {error}" for error in embeddings_errors) +
+                    "\n\nFix these issues in your .env file.\n\n"
+                    "See: envs/.env.azure-local-input.example"
+                )
+                raise ValueError(error_msg)
 
             # Create provider
             self.embeddings_provider = create_embeddings_provider(mode, config)
@@ -522,6 +563,17 @@ class Pipeline:
             logger.info("✅ Validation complete. Exiting without processing documents.")
             return None
 
+        # Run auto-validation before processing if enabled
+        if self.config.auto_validate:
+            logger.info("🔍 Running auto-validation before processing...")
+            try:
+                await self.validate()
+                logger.info("✅ Auto-validation passed. Proceeding with document processing.")
+            except RuntimeError as e:
+                logger.error(f"❌ Auto-validation failed: {e}")
+                logger.error("Fix the errors above and retry. Set AUTO_VALIDATE=false to skip validation.")
+                raise
+
         logger.info(f"Starting document ingestion pipeline (action: {self.config.document_action.value})")
         await self._initialize_components()
 
@@ -564,13 +616,13 @@ class Pipeline:
         if len(files) == 0:
             logger.error("No files found in input source. Check your configuration:")
             if self.config.input.mode.value == "local":
-                logger.error(f"  - AZURE_INPUT_MODE=local")
-                logger.error(f"  - AZURE_LOCAL_GLOB={self.config.input.local_glob}")
+                logger.error(f"  - INPUT_MODE=local")
+                logger.error(f"  - LOCAL_INPUT_GLOB={self.config.input.local_glob}")
                 logger.error(f"  Ensure files exist matching the glob pattern")
             else:
-                logger.error(f"  - AZURE_INPUT_MODE=blob")
-                logger.error(f"  - AZURE_BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
-                logger.error(f"  - AZURE_BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
+                logger.error(f"  - INPUT_MODE=blob")
+                logger.error(f"  - BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
+                logger.error(f"  - BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
                 logger.error(f"  Ensure the container exists and contains files")
             raise ValueError("No files found to process")
 
@@ -944,12 +996,12 @@ class Pipeline:
         if files_found == 0:
             logger.error("No files found in input source to remove. Check your configuration:")
             if self.config.input.mode.value == "local":
-                logger.error(f"  - AZURE_INPUT_MODE=local")
-                logger.error(f"  - AZURE_LOCAL_GLOB={self.config.input.local_glob}")
+                logger.error(f"  - INPUT_MODE=local")
+                logger.error(f"  - LOCAL_INPUT_GLOB={self.config.input.local_glob}")
             else:
-                logger.error(f"  - AZURE_INPUT_MODE=blob")
-                logger.error(f"  - AZURE_BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
-                logger.error(f"  - AZURE_BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
+                logger.error(f"  - INPUT_MODE=blob")
+                logger.error(f"  - BLOB_CONTAINER_IN={self.config.input.blob_container_in}")
+                logger.error(f"  - BLOB_PREFIX={self.config.input.blob_prefix or '(none)'}")
             raise ValueError("No files found to remove")
 
         logger.info(f"Total removed: {total_removed} documents")

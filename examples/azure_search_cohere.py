@@ -62,12 +62,12 @@ os.environ.update({
     "AZURE_ARTIFACTS_CONTAINER": "artifacts",
 
     # Document Processing
-    "AZURE_OFFICE_EXTRACTOR_MODE": "hybrid",  # Try Azure DI, fallback to MarkItDown
+    "OFFICE_EXTRACTOR_MODE": "hybrid",  # Try Azure DI, fallback to MarkItDown
 
     # Chunking settings
-    "AZURE_CHUNKING_MAX_CHARS": "2000",
-    "AZURE_CHUNKING_MAX_TOKENS": "500",
-    "AZURE_CHUNKING_OVERLAP_PERCENT": "10",
+    "CHUNKING_MAX_CHARS": "2000",
+    "CHUNKING_MAX_TOKENS": "500",
+    "CHUNKING_OVERLAP_PERCENT": "10",
 
     # Logging
     "LOG_LEVEL": "INFO",
