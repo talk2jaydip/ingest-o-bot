@@ -115,6 +115,15 @@ analyze_test_results.py
 .env_backup
 .env.azure_backup
 backups/
+*-backup.py
+test_export.json
+*_SUMMARY.md
+CONSOLIDATION_SUMMARY.md
+DOCUMENTATION_CONSOLIDATION.md
+DOCUMENTATION_UPDATE_SUMMARY.md
+FIXES_SUMMARY.md
+JSON_IMPORT_EXPORT_SUMMARY.md
+TEST_INDEX_CONFIG.md
 
 # Azure
 .azure/
