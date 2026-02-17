@@ -5,6 +5,14 @@ import asyncio
 import sys
 from pathlib import Path
 
+# Fix Windows console encoding for Unicode support
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass  # Ignore if reconfigure not available
+
 # Add parent directory to path to allow running as script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -36,6 +44,12 @@ Examples:
 
   # Force recreate index ONLY (delete + create, no ingestion)
   python -m ingestor.cli --force-index
+
+  # Export current index schema to JSON file
+  python -m ingestor.cli --export-schema schema_backup.json
+
+  # Create index from JSON schema file
+  python -m ingestor.cli --import-schema original_index.json
 
   # Deploy index and then ingest documents
   python -m ingestor.cli --setup-index --glob "documents/*.pdf"
@@ -74,13 +88,13 @@ Examples:
         dest="pdf_path",
         type=str,
         metavar="PATH",
-        help="Path to file to process (overrides AZURE_LOCAL_GLOB)"
+        help="Path to file to process (overrides LOCAL_INPUT_GLOB)"
     )
     parser.add_argument(
         "--glob",
         type=str,
         metavar="PATTERN",
-        help="Glob pattern for local files (overrides AZURE_LOCAL_GLOB), e.g., 'documents/*.pdf'"
+        help="Glob pattern for local files (overrides LOCAL_INPUT_GLOB), e.g., 'documents/*.pdf'"
     )
     parser.add_argument(
         "--action",
@@ -130,6 +144,18 @@ Examples:
         help="Check if index exists, then exit (no ingestion)"
     )
     parser.add_argument(
+        "--export-schema",
+        type=str,
+        metavar="OUTPUT_FILE",
+        help="Export current index schema to JSON file (e.g., schema.json)"
+    )
+    parser.add_argument(
+        "--import-schema",
+        type=str,
+        metavar="JSON_FILE",
+        help="Create index from JSON schema file (e.g., original_index.json)"
+    )
+    parser.add_argument(
         "--clean-artifacts",
         action="store_true",
         help="Clean blob artifacts for specified files (use with --glob or --action remove)"
@@ -150,12 +176,27 @@ Examples:
 
     # Load environment variables from specified .env file
     env_file_path = Path(args.env_file)
+
+    # If relative path, try both current dir and project root
+    if not env_file_path.is_absolute():
+        # Try current directory first
+        if env_file_path.exists():
+            env_file_path = env_file_path.resolve()
+        else:
+            # Try project root (parent of src/ if we're in src/)
+            project_root = Path(__file__).parent.parent.parent
+            potential_path = project_root / args.env_file
+            if potential_path.exists():
+                env_file_path = potential_path
+            else:
+                env_file_path = env_file_path.resolve()
+
     if env_file_path.exists():
         load_dotenv(dotenv_path=env_file_path, override=True)
         print(f"✓ Loaded environment from: {env_file_path}")
     else:
         print(f"⚠️  Environment file not found: {env_file_path}")
-        print(f"⚠️  Continuing with system environment variables...")
+        print(f"⚠️  Continuing with auto-discovery (will search current dir and parents)...")
 
     # Validate environment parameters for typos and issues
     from ingestor.config_validator import validate_environment
@@ -167,6 +208,21 @@ Examples:
         if len(warnings) > 5:
             print(f"  ... and {len(warnings) - 5} more warnings")
         print()
+
+    # Validate scenario configuration
+    from ingestor.scenario_validator import validate_current_environment
+    scenario_result = validate_current_environment(verbose=False)
+    if scenario_result.scenario:
+        if scenario_result.valid:
+            print(f"✓ Detected scenario: {scenario_result.scenario.value}")
+        else:
+            print(f"\n⚠️  Configuration issues detected for scenario: {scenario_result.scenario.value}")
+            if scenario_result.errors:
+                print(f"   Errors: {len(scenario_result.errors)}")
+                for error in scenario_result.errors[:3]:
+                    print(f"     - {error}")
+            print(f"   Run 'python -m ingestor.scenario_validator' for detailed help")
+            print()
 
     # Load logging configuration from environment
     from ingestor.config import LoggingConfig
@@ -258,7 +314,10 @@ Examples:
                     endpoint=search_endpoint,
                     api_key=search_key,
                     index_name=index_name,
-                    verbose=args.verbose
+                    verbose=args.verbose,
+                    semantic_config_name=temp_config.search.semantic_config_name,
+                    suggester_name=temp_config.search.suggester_name,
+                    scoring_profile_names=temp_config.search.scoring_profile_names
                 )
 
                 # Check if index exists
@@ -274,6 +333,95 @@ Examples:
 
             except Exception as e:
                 logger.error(f"ERROR: Failed to check index: {e}", exc_info=args.verbose)
+                sys.exit(1)
+
+        # Handle export-schema operation (standalone operation)
+        if args.export_schema:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("Exporting Index Schema to JSON")
+            logger.info("=" * 70)
+
+            try:
+                temp_config = PipelineConfig.from_env()
+                from ingestor.index import IndexDeploymentManager
+
+                search_endpoint = temp_config.search.endpoint
+                search_key = temp_config.search.api_key
+                index_name = temp_config.search.index_name
+
+                logger.info(f"Exporting schema for index: {index_name}")
+
+                manager = IndexDeploymentManager(
+                    endpoint=search_endpoint,
+                    api_key=search_key,
+                    index_name=index_name,
+                    verbose=args.verbose,
+                    semantic_config_name=temp_config.search.semantic_config_name,
+                    suggester_name=temp_config.search.suggester_name,
+                    scoring_profile_names=temp_config.search.scoring_profile_names
+                )
+
+                # Export schema
+                output_file = manager.export_schema_to_json(args.export_schema)
+
+                logger.info("")
+                logger.info(f"SUCCESS: Schema exported to {output_file}")
+                logger.info("")
+
+                # Exit after export (standalone operation)
+                logger.info("Export operation completed. Exiting.")
+                sys.exit(0)
+
+            except Exception as e:
+                logger.error(f"ERROR: Schema export failed: {e}", exc_info=args.verbose)
+                sys.exit(1)
+
+        # Handle import-schema operation (standalone operation)
+        if args.import_schema:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("Creating Index from JSON Schema")
+            logger.info("=" * 70)
+
+            try:
+                temp_config = PipelineConfig.from_env()
+                from ingestor.index import IndexDeploymentManager
+
+                search_endpoint = temp_config.search.endpoint
+                search_key = temp_config.search.api_key
+                index_name = temp_config.search.index_name
+
+                logger.info(f"Target index name: {index_name}")
+                logger.info(f"JSON schema file: {args.import_schema}")
+
+                manager = IndexDeploymentManager(
+                    endpoint=search_endpoint,
+                    api_key=search_key,
+                    index_name=index_name,
+                    verbose=args.verbose,
+                    semantic_config_name=temp_config.search.semantic_config_name,
+                    suggester_name=temp_config.search.suggester_name,
+                    scoring_profile_names=temp_config.search.scoring_profile_names
+                )
+
+                # Import schema
+                success = manager.create_index_from_json(args.import_schema, skip_if_exists=True)
+
+                if not success:
+                    logger.error("ERROR: Index creation from JSON failed")
+                    sys.exit(1)
+
+                logger.info("")
+                logger.info(f"SUCCESS: Index created from {args.import_schema}")
+                logger.info("")
+
+                # Exit after import (standalone operation)
+                logger.info("Import operation completed. Exiting.")
+                sys.exit(0)
+
+            except Exception as e:
+                logger.error(f"ERROR: Index creation from JSON failed: {e}", exc_info=args.verbose)
                 sys.exit(1)
 
         # Handle clean all artifacts operation
@@ -378,7 +526,10 @@ Examples:
                     endpoint=search_endpoint,
                     api_key=search_key,
                     index_name=index_name,
-                    verbose=args.verbose
+                    verbose=args.verbose,
+                    semantic_config_name=temp_config.search.semantic_config_name,
+                    suggester_name=temp_config.search.suggester_name,
+                    scoring_profile_names=temp_config.search.scoring_profile_names
                 )
 
                 # Delete the index
@@ -435,6 +586,9 @@ Examples:
                     index_name=index_name,
                     openai_endpoint=openai_endpoint,
                     openai_deployment=openai_deployment,
+                    semantic_config_name=search_config.semantic_config_name,
+                    suggester_name=search_config.suggester_name,
+                    scoring_profile_names=search_config.scoring_profile_names,
                     openai_key=openai_key,
                     verbose=args.verbose
                 )
@@ -480,22 +634,22 @@ Examples:
             
             try:
                 # Import index deployment module here to avoid dependency if not using it
-
-                # Temporarily load config to get search settings
-                temp_config = PipelineConfig.from_env()
-                
-                # Import index deployment
                 from ingestor.index import IndexDeploymentManager
-                
-                # Extract search service name from endpoint
-                search_endpoint = temp_config.search.endpoint
-                search_key = temp_config.search.api_key
-                index_name = temp_config.search.index_name
-                
+                from ingestor.config import SearchConfig, AzureOpenAIConfig
+
+                # Load only the configs needed for index deployment (not full pipeline)
+                search_config = SearchConfig.from_env()
+                openai_config = AzureOpenAIConfig.from_env()
+
+                # Extract search settings
+                search_endpoint = search_config.endpoint
+                search_key = search_config.api_key
+                index_name = search_config.index_name
+
                 # Optional: OpenAI for integrated vectorizer
-                openai_endpoint = temp_config.azure_openai.endpoint
-                openai_deployment = temp_config.azure_openai.emb_deployment
-                openai_key = temp_config.azure_openai.api_key
+                openai_endpoint = openai_config.endpoint
+                openai_deployment = openai_config.emb_deployment
+                openai_key = openai_config.api_key
                 
                 logger.info(f"Search endpoint: {search_endpoint}")
                 logger.info(f"Index name: {index_name}")
@@ -509,6 +663,9 @@ Examples:
                     index_name=index_name,
                     openai_endpoint=openai_endpoint,
                     openai_deployment=openai_deployment,
+                    semantic_config_name=search_config.semantic_config_name,
+                    suggester_name=search_config.suggester_name,
+                    scoring_profile_names=search_config.scoring_profile_names,
                     openai_key=openai_key,
                     verbose=args.verbose
                 )
@@ -544,26 +701,25 @@ Examples:
             sys.exit(0)
 
         # Check if input files are provided before proceeding to ingestion
-        # Load temp config to check if input source is configured
-        temp_config = PipelineConfig.from_env()
+        # When --setup-index or --index-only is used without explicit CLI input,
+        # assume the user only wants index operations (no ingestion)
         has_cli_input = bool(args.pdf_path or args.glob)
-        has_env_input = bool(
-            (temp_config.input.mode == InputMode.LOCAL and temp_config.input.local_glob) or
-            (temp_config.input.mode == InputMode.BLOB and temp_config.input.blob_container_in)
-        )
 
-        # If --setup-index was used alone without input files, exit gracefully
-        if args.setup_index and not has_cli_input and not has_env_input and not args.action:
+        # If --setup-index was used without CLI input, exit gracefully
+        # (User can always run ingestion separately or add --glob flag)
+        if args.setup_index and not has_cli_input and not args.action:
             logger.info("")
             logger.info("=" * 70)
-            logger.info("Index setup completed successfully!")
+            logger.info("SUCCESS: Index setup completed!")
             logger.info("=" * 70)
             logger.info("")
-            logger.info("No input files specified for ingestion.")
-            logger.info("To ingest documents, use:")
-            logger.info("  --glob 'path/to/files/*.pdf'")
-            logger.info("  --pdf 'path/to/file.pdf'")
-            logger.info("  Or set AZURE_LOCAL_GLOB or AZURE_BLOB_CONTAINER_IN in .env")
+            logger.info("Index is ready for document ingestion.")
+            logger.info("")
+            logger.info("To ingest documents, run:")
+            logger.info("  python -m ingestor.cli --glob 'documents/*.pdf'")
+            logger.info("  python -m ingestor.cli --pdf 'document.pdf'")
+            logger.info("")
+            logger.info("Or set LOCAL_INPUT_GLOB in .env and run without --setup-index")
             logger.info("")
             sys.exit(0)
 
@@ -589,7 +745,16 @@ Examples:
             logger.info(f"Overriding input with glob pattern: {args.glob}")
             config.input.mode = InputMode.LOCAL
             config.input.local_glob = args.glob
-        
+
+        # Validate that local mode has input source (either from CLI or env)
+        if config.input.mode == InputMode.LOCAL and not config.input.local_glob:
+            logger.error("ERROR: Local input mode requires either:")
+            logger.error("  1. Command-line argument: --glob 'path/to/files/*.pdf' or --pdf 'file.pdf'")
+            logger.error("  2. Environment variable: LOCAL_INPUT_GLOB=documents/**/*.pdf")
+            logger.error("")
+            logger.error("Please specify input files using one of these methods.")
+            sys.exit(1)
+
         # Override document action if specified
         if args.action:
             config.document_action = DocumentAction(args.action)
@@ -628,9 +793,9 @@ Examples:
                 logger.error("   --pdf 'path/to/file.pdf'      (process single file)")
                 logger.error("")
                 logger.error("2. Environment variables in .env:")
-                logger.error("   AZURE_LOCAL_GLOB=path/to/files/*.pdf")
+                logger.error("   LOCAL_INPUT_GLOB=path/to/files/*.pdf")
                 logger.error("   OR")
-                logger.error("   AZURE_BLOB_CONTAINER_IN=your-container-name")
+                logger.error("   BLOB_CONTAINER_IN=your-container-name")
                 logger.error("")
                 logger.error("3. Index operations only (without ingestion):")
                 logger.error("   --setup-index   (create/update index, then ingest)")
